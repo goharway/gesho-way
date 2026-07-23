@@ -1,26 +1,44 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Sparkles, Loader2, Rocket, CheckCircle2 } from 'lucide-react';
+import { Sparkles, Loader2, Rocket, CheckCircle2, Command as CommandIcon } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import {
   parsePrompt,
   STAGE_DEFINITIONS,
   stageLogs,
   platformLabel,
+  getDevicePreset,
+  applyDarkMode,
 } from '@/lib/appEngine';
 import type {
   AppRegion,
   BuildStage,
+  ColorScheme,
+  DeviceType,
   Platform,
   Project,
   StageType,
+  ThemeMode,
 } from '@/types/builder';
 import PromptScreen from '@/components/PromptScreen';
 import BuildStages from '@/components/BuildStages';
 import PhonePreview from '@/components/PhonePreview';
 import RegionModal from '@/components/RegionModal';
 import Header from '@/components/Header';
+import DeviceSwitcher from '@/components/DeviceSwitcher';
+import ThemeEditor from '@/components/ThemeEditor';
+import ProjectsDashboard from '@/components/ProjectsDashboard';
+import CommandPalette, { type Command } from '@/components/CommandPalette';
 
-type View = 'prompt' | 'builder';
+type View = 'prompt' | 'builder' | 'dashboard';
+
+const DEFAULT_COLOR_SCHEME: ColorScheme = {
+  primary: '#0f766e',
+  secondary: '#14b8a6',
+  accent: '#f59e0b',
+  background: '#f0fdfa',
+  surface: '#ffffff',
+  text: '#042f2e',
+};
 
 export default function App() {
   const [view, setView] = useState<View>('prompt');
@@ -31,6 +49,18 @@ export default function App() {
   const [modalRegion, setModalRegion] = useState<AppRegion | null>(null);
   const [recentProjectName, setRecentProjectName] = useState<string>();
   const buildTimer = useRef<ReturnType<typeof setTimeout>>();
+
+  const [deviceType, setDeviceType] = useState<DeviceType>('iphone');
+  const [themeMode, setThemeMode] = useState<ThemeMode>('light');
+  const [customColors, setCustomColors] = useState<ColorScheme | null>(null);
+  const [themeEditorOpen, setThemeEditorOpen] = useState(false);
+  const [commandOpen, setCommandOpen] = useState(false);
+
+  const device = getDevicePreset(deviceType);
+
+  const baseColorScheme = project?.config?.colorScheme ?? DEFAULT_COLOR_SCHEME;
+  const colorScheme = customColors ?? baseColorScheme;
+  const activeColorScheme = themeMode === 'dark' ? applyDarkMode(colorScheme) : colorScheme;
 
   const handleStart = useCallback(async (prompt: string, platform: Platform) => {
     const spec = parsePrompt(prompt);
@@ -54,6 +84,8 @@ export default function App() {
     const projectRow = proj as unknown as Project;
     setProject(projectRow);
     setRecentProjectName(projectRow.name);
+    setCustomColors(null);
+    setThemeMode('light');
     setView('builder');
 
     const stageRows = STAGE_DEFINITIONS.map((s, i) => ({
@@ -164,7 +196,31 @@ export default function App() {
     setStages([]);
     setRegions([]);
     setActiveLog('');
+    setCustomColors(null);
+    setThemeMode('light');
     setView('prompt');
+  };
+
+  const handleOpenProject = async (proj: Project) => {
+    setProject(proj);
+    setCustomColors(null);
+    setView('builder');
+
+    const { data: stageData } = await supabase
+      .from('build_stages')
+      .select('*')
+      .eq('project_id', proj.id)
+      .order('sort_order', { ascending: true });
+    setStages((stageData ?? []) as unknown as BuildStage[]);
+
+    const { data: regionData } = await supabase
+      .from('app_regions')
+      .select('*')
+      .eq('project_id', proj.id)
+      .order('sort_order', { ascending: true });
+    setRegions((regionData ?? []) as unknown as AppRegion[]);
+
+    setActiveLog('');
   };
 
   useEffect(() => {
@@ -173,23 +229,56 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setCommandOpen((v) => !v);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   const isBuilding = stages.some((s) => s.status === 'in_progress' || s.status === 'pending');
   const buildComplete = stages.length > 0 && stages.every((s) => s.status === 'completed');
   const incompleteRegions = regions.filter((r) => r.status === 'incomplete');
 
+  const commands: Command[] = [
+    { id: 'new', label: 'New App', icon: <Sparkles className="w-4 h-4" />, action: handleNew },
+    { id: 'projects', label: 'View All Projects', icon: <CommandIcon className="w-4 h-4" />, action: () => setView('dashboard') },
+    { id: 'theme', label: 'Open Theme Editor', action: () => setThemeEditorOpen(true) },
+    { id: 'device-iphone', label: 'Switch to iPhone', action: () => setDeviceType('iphone') },
+    { id: 'device-android', label: 'Switch to Android', action: () => setDeviceType('android') },
+    { id: 'device-ipad', label: 'Switch to iPad', action: () => setDeviceType('ipad') },
+    { id: 'mode-light', label: 'Light Mode', action: () => setThemeMode('light') },
+    { id: 'mode-dark', label: 'Dark Mode', action: () => setThemeMode('dark') },
+  ];
+
   if (view === 'prompt') {
     return (
-      <PromptScreen
-        onStart={handleStart}
-        recentProjectName={recentProjectName}
-      />
+      <>
+        <PromptScreen onStart={handleStart} recentProjectName={recentProjectName} />
+        <CommandPalette open={commandOpen} commands={commands} onClose={() => setCommandOpen(false)} />
+      </>
     );
   }
 
-  const colorScheme = project?.config?.colorScheme ?? {
-    primary: '#0f766e', secondary: '#14b8a6', accent: '#f59e0b',
-    background: '#f0fdfa', surface: '#ffffff', text: '#042f2e',
-  };
+  if (view === 'dashboard') {
+    return (
+      <div className="min-h-screen flex flex-col">
+        <Header
+          onNew={handleNew}
+          onHome={handleNew}
+          onProjects={() => setView('dashboard')}
+          onTheme={() => setThemeEditorOpen(true)}
+          onCommand={() => setCommandOpen(true)}
+        />
+        <ProjectsDashboard onNew={handleNew} onOpen={handleOpenProject} />
+        <CommandPalette open={commandOpen} commands={commands} onClose={() => setCommandOpen(false)} />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -198,6 +287,9 @@ export default function App() {
         appType={project?.app_type}
         onNew={handleNew}
         onHome={handleNew}
+        onProjects={() => setView('dashboard')}
+        onTheme={() => setThemeEditorOpen(true)}
+        onCommand={() => setCommandOpen(true)}
       />
 
       <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
@@ -206,19 +298,34 @@ export default function App() {
           <BuildStages stages={stages} activeLog={activeLog} />
         </div>
 
-        {/* Center: Phone preview */}
+        {/* Center: Phone preview with device + theme controls */}
         <div className="flex-1 flex flex-col items-center justify-center bg-gradient-to-b from-slate-900 to-slate-950 p-4 min-h-[400px] relative overflow-hidden">
           <div className="pointer-events-none absolute inset-0">
             <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-emerald-500/5 rounded-full blur-3xl" />
             <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-cyan-500/5 rounded-full blur-3xl" />
           </div>
-          <div className="relative z-10 w-full flex items-center justify-center">
-            <PhonePreview
-              regions={regions}
-              colorScheme={colorScheme}
-              appName={project?.name ?? 'My App'}
-              onRegionClick={handleRegionClick}
-            />
+
+          <div className="relative z-10 w-full flex flex-col items-center">
+            <div className="flex items-center gap-3 mb-4">
+              <DeviceSwitcher active={deviceType} onChange={setDeviceType} />
+              <button
+                onClick={() => setThemeMode(themeMode === 'light' ? 'dark' : 'light')}
+                title="Toggle dark/light"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-800 bg-slate-900/60 text-xs font-medium text-slate-400 hover:text-slate-200 transition-colors"
+              >
+                {themeMode === 'light' ? 'Dark' : 'Light'}
+              </button>
+            </div>
+            <div className="w-full flex items-center justify-center">
+              <PhonePreview
+                regions={regions}
+                colorScheme={activeColorScheme}
+                appName={project?.name ?? 'My App'}
+                device={device}
+                themeMode={themeMode}
+                onRegionClick={handleRegionClick}
+              />
+            </div>
           </div>
         </div>
 
@@ -239,6 +346,18 @@ export default function App() {
         onClose={() => setModalRegion(null)}
         onComplete={handleCompleteRegion}
       />
+
+      <ThemeEditor
+        open={themeEditorOpen}
+        colorScheme={colorScheme}
+        themeMode={themeMode}
+        onClose={() => setThemeEditorOpen(false)}
+        onChange={setCustomColors}
+        onModeChange={setThemeMode}
+        onReset={() => setCustomColors(null)}
+      />
+
+      <CommandPalette open={commandOpen} commands={commands} onClose={() => setCommandOpen(false)} />
     </div>
   );
 }

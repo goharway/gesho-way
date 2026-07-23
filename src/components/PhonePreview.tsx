@@ -17,17 +17,21 @@ import {
   Image as ImageIcon,
   TrendingUp,
   Check,
+  Sun,
+  Moon,
 } from 'lucide-react';
-import type { AppRegion, ColorScheme, ScreenSpec, ScreenElement } from '@/types/builder';
+import type { AppRegion, ColorScheme, DevicePreset, ScreenSpec, ScreenElement, ThemeMode } from '@/types/builder';
 
 interface PhonePreviewProps {
   regions: AppRegion[];
   colorScheme: ColorScheme;
   appName: string;
+  device: DevicePreset;
+  themeMode: ThemeMode;
   onRegionClick: (region: AppRegion) => void;
 }
 
-export default function PhonePreview({ regions, colorScheme, appName, onRegionClick }: PhonePreviewProps) {
+export default function PhonePreview({ regions, colorScheme, appName, device, themeMode, onRegionClick }: PhonePreviewProps) {
   const completeRegions = regions.filter((r) => r.status === 'complete' || r.status === 'building');
   const [activeIdx, setActiveIdx] = useState(0);
 
@@ -55,7 +59,7 @@ export default function PhonePreview({ regions, colorScheme, appName, onRegionCl
 
   return (
     <div className="flex flex-col items-center h-full p-4 overflow-hidden">
-      <div className="flex items-center gap-1.5 mb-3 flex-wrap justify-center">
+      <div className="flex items-center gap-1.5 mb-3 flex-wrap justify-center max-w-[300px]">
         {completeRegions.map((r, i) => (
           <button
             key={r.id}
@@ -71,11 +75,12 @@ export default function PhonePreview({ regions, colorScheme, appName, onRegionCl
         ))}
       </div>
 
-      <PhoneFrame>
+      <PhoneFrame device={device}>
         <ScreenRenderer
           spec={region.spec}
           colorScheme={colorScheme}
           appName={appName}
+          themeMode={themeMode}
           isIncomplete={region.status === 'building'}
           onIncompleteClick={() => onRegionClick(region)}
         />
@@ -88,11 +93,19 @@ export default function PhonePreview({ regions, colorScheme, appName, onRegionCl
   );
 }
 
-function PhoneFrame({ children }: { children: React.ReactNode }) {
+function PhoneFrame({ device, children }: { device: DevicePreset; children: React.ReactNode }) {
+  const borderW = device.type === 'ipad' ? 'border-[8px]' : 'border-[10px]';
+  const radiusClass = device.type === 'ipad' ? 'rounded-[2rem]' : 'rounded-[2.5rem]';
+
   return (
-    <div className="relative w-[260px] h-[540px] rounded-[2.5rem] border-[10px] border-slate-800 bg-black shadow-2xl shadow-black/50">
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-24 h-5 bg-slate-800 rounded-b-2xl z-20" />
-      <div className="w-full h-full rounded-[1.75rem] overflow-hidden relative bg-white">
+    <div className={`relative bg-black shadow-2xl shadow-black/50 ${borderW} border-slate-800 ${radiusClass}`} style={{ width: device.width, height: device.height }}>
+      {device.notchStyle === 'dynamic-island' && (
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-20 h-5 bg-black rounded-b-2xl z-20" />
+      )}
+      {device.notchStyle === 'punch-hole' && (
+        <div className="absolute top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-black rounded-full z-20" />
+      )}
+      <div className={`w-full h-full ${device.type === 'ipad' ? 'rounded-[1.5rem]' : 'rounded-[1.75rem]'} overflow-hidden relative bg-white`}>
         {children}
       </div>
     </div>
@@ -103,12 +116,14 @@ function ScreenRenderer({
   spec,
   colorScheme,
   appName,
+  themeMode,
   isIncomplete,
   onIncompleteClick,
 }: {
   spec: ScreenSpec;
   colorScheme: ColorScheme;
   appName: string;
+  themeMode: ThemeMode;
   isIncomplete: boolean;
   onIncompleteClick: () => void;
 }) {
@@ -117,7 +132,7 @@ function ScreenRenderer({
       className="flex flex-col h-full text-sm"
       style={{ backgroundColor: colorScheme.background, color: colorScheme.text }}
     >
-      <StatusBar colorScheme={colorScheme} />
+      <StatusBar colorScheme={colorScheme} themeMode={themeMode} />
       <ScreenHeader label={spec.name} colorScheme={colorScheme} />
       <div className="flex-1 overflow-y-auto scrollbar-thin px-4 py-3 space-y-3">
         {spec.elements.map((el, idx) => (
@@ -137,17 +152,18 @@ function ScreenRenderer({
   );
 }
 
-function StatusBar({ colorScheme }: { colorScheme: ColorScheme }) {
+function StatusBar({ colorScheme, themeMode }: { colorScheme: ColorScheme; themeMode: ThemeMode }) {
   return (
     <div
       className="flex items-center justify-between px-5 pt-2 pb-1 text-[10px] font-semibold"
       style={{ color: colorScheme.text }}
     >
       <span>9:41</span>
-      <span className="flex items-center gap-1">
+      <div className="flex items-center gap-1.5">
+        {themeMode === 'dark' ? <Moon className="w-2.5 h-2.5" /> : <Sun className="w-2.5 h-2.5" />}
         <span className="w-3 h-2 rounded-[2px] border" style={{ borderColor: colorScheme.text }} />
         <span>100%</span>
-      </span>
+      </div>
     </div>
   );
 }
@@ -306,26 +322,30 @@ function hasTabBar(spec: ScreenSpec): boolean {
 }
 
 function TabBar({ colorScheme }: { colorScheme: ColorScheme }) {
+  const [activeTab, setActiveTab] = useState(0);
+  const tabs = [
+    { icon: <Home className="w-5 h-5" />, label: 'Home' },
+    { icon: <Search className="w-5 h-5" />, label: 'Search' },
+    { icon: <Plus className="w-5 h-5" />, label: 'Add' },
+    { icon: <Bell className="w-5 h-5" />, label: 'Alerts' },
+    { icon: <User className="w-5 h-5" />, label: 'Profile' },
+  ];
+
   return (
     <div
       className="flex items-center justify-around py-2 border-t"
       style={{ backgroundColor: colorScheme.surface, borderColor: colorScheme.secondary + '20' }}
     >
-      {[
-        { icon: <Home className="w-5 h-5" />, label: 'Home' },
-        { icon: <Search className="w-5 h-5" />, label: 'Search' },
-        { icon: <Plus className="w-5 h-5" />, label: 'Add' },
-        { icon: <Bell className="w-5 h-5" />, label: 'Alerts' },
-        { icon: <User className="w-5 h-5" />, label: 'Profile' },
-      ].map((tab, i) => (
-        <div
+      {tabs.map((tab, i) => (
+        <button
           key={i}
-          className="flex flex-col items-center gap-0.5"
-          style={{ color: i === 0 ? colorScheme.primary : colorScheme.text + '60' }}
+          onClick={() => setActiveTab(i)}
+          className="flex flex-col items-center gap-0.5 transition-colors"
+          style={{ color: i === activeTab ? colorScheme.primary : colorScheme.text + '60' }}
         >
           {tab.icon}
           <span className="text-[8px]">{tab.label}</span>
-        </div>
+        </button>
       ))}
     </div>
   );

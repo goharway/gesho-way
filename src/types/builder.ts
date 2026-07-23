@@ -2,6 +2,21 @@ export type Platform = 'ios' | 'android' | 'both';
 export type ProjectStatus = 'building' | 'completed' | 'failed';
 export type StageStatus = 'pending' | 'in_progress' | 'completed' | 'failed';
 export type RegionStatus = 'complete' | 'incomplete' | 'building';
+export type ThemeMode = 'light' | 'dark';
+export type DeviceType = 'iphone' | 'android' | 'ipad';
+
+export interface DevicePreset {
+  type: DeviceType;
+  label: string;
+  width: number;
+  height: number;
+  borderRadius: number;
+  notchStyle: 'dynamic-island' | 'notch' | 'punch-hole' | 'none';
+}
+
+export interface ColorSchemeOverride extends Partial<ColorScheme> {
+  mode?: ThemeMode;
+}
 
 export type StageType =
   | 'analysis'

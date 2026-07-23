@@ -1,9 +1,12 @@
 import type {
   AppSpec,
   ColorScheme,
+  DevicePreset,
+  DeviceType,
   Platform,
   ScreenSpec,
   StageType,
+  ThemeMode,
 } from '@/types/builder';
 
 interface ParsedPrompt {
@@ -531,6 +534,39 @@ export function parsePrompt(prompt: string): AppSpec {
     features,
     screens,
     colorScheme: COLOR_SCHEMES[keyword] ?? COLOR_SCHEMES.general,
+  };
+}
+
+export const DEVICE_PRESETS: DevicePreset[] = [
+  { type: 'iphone', label: 'iPhone 15 Pro', width: 280, height: 580, borderRadius: 2.5, notchStyle: 'dynamic-island' },
+  { type: 'android', label: 'Pixel 8', width: 275, height: 570, borderRadius: 2, notchStyle: 'punch-hole' },
+  { type: 'ipad', label: 'iPad Pro', width: 420, height: 540, borderRadius: 2, notchStyle: 'none' },
+];
+
+export function getDevicePreset(type: DeviceType): DevicePreset {
+  return DEVICE_PRESETS.find((d) => d.type === type) ?? DEVICE_PRESETS[0];
+}
+
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const m = hex.replace('#', '').match(/.{1,2}/g);
+  if (!m) return { r: 0, g: 0, b: 0 };
+  return { r: parseInt(m[0], 16), g: parseInt(m[1], 16), b: parseInt(m[2], 16) };
+}
+
+function adjustBrightness(hex: string, factor: number): string {
+  const { r, g, b } = hexToRgb(hex);
+  const adjust = (v: number) => Math.max(0, Math.min(255, Math.round(v * factor)));
+  return `#${adjust(r).toString(16).padStart(2, '0')}${adjust(g).toString(16).padStart(2, '0')}${adjust(b).toString(16).padStart(2, '0')}`;
+}
+
+export function applyDarkMode(scheme: ColorScheme): ColorScheme {
+  return {
+    primary: adjustBrightness(scheme.primary, 0.8),
+    secondary: adjustBrightness(scheme.secondary, 0.7),
+    accent: scheme.accent,
+    background: adjustBrightness(scheme.background, 0.12),
+    surface: adjustBrightness(scheme.surface, 0.15),
+    text: adjustBrightness(scheme.text, 2.5),
   };
 }
 
