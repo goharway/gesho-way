@@ -4,10 +4,13 @@ import type {
   DevicePreset,
   DeviceType,
   Platform,
+  ProjectFile,
   ScreenSpec,
   StageType,
   ThemeMode,
 } from '@/types/builder';
+
+export type { ProjectFile };
 
 interface ParsedPrompt {
   appName: string;
@@ -643,4 +646,267 @@ const STAGE_LOGS: Record<StageType, string[]> = {
 export function stageLogs(type: StageType, appType: string): string[] {
   const logs = STAGE_LOGS[type] ?? [];
   return logs.map((l) => l.replace('{appType}', APP_TYPE_LABELS[appType] ?? appType));
+}
+
+function toPascalCase(s: string): string {
+  return s.replace(/[^a-zA-Z0-9]+(.)/g, (_, c) => c.toUpperCase()).replace(/^./, (c) => c.toUpperCase()) || 'App';
+}
+
+function generateScreenCode(screen: ScreenSpec, scheme: ColorScheme, appName: string): string {
+  const comp = toPascalCase(screen.name);
+  const q = (s?: string) => JSON.stringify(s ?? '');
+  const lines: string[] = [
+    `import React from 'react';`,
+    `import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';`,
+    ``,
+    `export default function ${comp}() {`,
+    `  return (`,
+    `    <ScrollView style={styles.container} contentContainerStyle={styles.content}>`,
+  ];
+  for (const el of screen.elements) {
+    switch (el.kind) {
+      case 'header':
+        lines.push(`      <Text style={styles.header}>{${q(el.label)}}</Text>`);
+        break;
+      case 'text':
+        lines.push(`      <Text style={styles.text}>{${q(el.label)}}</Text>`);
+        break;
+      case 'button':
+        lines.push(`      <TouchableOpacity style={styles.button}>`);
+        lines.push(`        <Text style={styles.buttonText}>{${q(el.label)}}</Text>`);
+        lines.push(`      </TouchableOpacity>`);
+        break;
+      case 'input':
+        lines.push(`      <TextInput placeholder={${q(el.placeholder)}} style={styles.input} />`);
+        break;
+      case 'card':
+        lines.push(`      <View style={styles.card}>`);
+        if (el.label) lines.push(`        <Text style={styles.cardTitle}>{${q(el.label)}}</Text>`);
+        if (el.value) lines.push(`        <Text style={styles.cardValue}>{${q(el.value)}}</Text>`);
+        lines.push(`      </View>`);
+        break;
+      case 'list':
+        el.items?.forEach((item) => {
+          lines.push(`      <View style={styles.listItem}>`);
+          lines.push(`        <Text>{${q(item)}}</Text>`);
+          lines.push(`      </View>`);
+        });
+        break;
+      case 'stat':
+        lines.push(`      <View style={styles.stat}>`);
+        lines.push(`        <Text style={styles.statLabel}>{${q(el.label)}}</Text>`);
+        if (el.value) lines.push(`        <Text style={styles.statValue}>{${q(el.value)}}</Text>`);
+        lines.push(`      </View>`);
+        break;
+      case 'avatar':
+        lines.push(`      <View style={styles.avatarRow}>`);
+        lines.push(`        <View style={styles.avatar}><Text>{${q(el.label?.charAt(0))}}</Text></View>`);
+        lines.push(`        <Text>{${q(el.label)}}</Text>`);
+        lines.push(`      </View>`);
+        break;
+      case 'image':
+        lines.push(`      <View style={styles.image} />`);
+        break;
+      case 'tabbar':
+        lines.push(`      <TabBar />`);
+        break;
+    }
+  }
+  lines.push(`    </ScrollView>`);
+  lines.push(`  );`);
+  lines.push(`}`);
+  lines.push(``);
+  lines.push(`const styles = StyleSheet.create({`);
+  lines.push(`  container: { flex: 1, backgroundColor: '${scheme.background}' },`);
+  lines.push(`  content: { padding: 16, gap: 12 },`);
+  lines.push(`  header: { fontSize: 24, fontWeight: 'bold', color: '${scheme.text}' },`);
+  lines.push(`  text: { fontSize: 14, color: '${scheme.text}' },`);
+  lines.push(`  button: { backgroundColor: '${scheme.primary}', padding: 14, borderRadius: 12, alignItems: 'center' },`);
+  lines.push(`  buttonText: { color: '#fff', fontWeight: '600' },`);
+  lines.push(`  input: { backgroundColor: '${scheme.surface}', borderWidth: 1, borderColor: '${scheme.secondary}40', padding: 12, borderRadius: 12 },`);
+  lines.push(`  card: { backgroundColor: '${scheme.surface}', padding: 16, borderRadius: 12 },`);
+  lines.push(`  cardTitle: { fontWeight: '600', color: '${scheme.text}' },`);
+  lines.push(`  cardValue: { fontSize: 12, color: '${scheme.text}99', marginTop: 4 },`);
+  lines.push(`  listItem: { backgroundColor: '${scheme.surface}', padding: 12, borderRadius: 8, flexDirection: 'row', alignItems: 'center' },`);
+  lines.push(`  stat: { backgroundColor: '${scheme.surface}', padding: 16, borderRadius: 12 },`);
+  lines.push(`  statLabel: { fontSize: 12, color: '${scheme.text}99' },`);
+  lines.push(`  statValue: { fontSize: 20, fontWeight: 'bold', color: '${scheme.primary}', marginTop: 4 },`);
+  lines.push(`  avatarRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },`);
+  lines.push(`  avatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: '${scheme.secondary}', alignItems: 'center', justifyContent: 'center' },`);
+  lines.push(`  image: { height: 120, borderRadius: 12, backgroundColor: '${scheme.primary}30' },`);
+  lines.push(`});`);
+  return lines.join('\n');
+}
+
+export function generateProjectFiles(spec: AppSpec): ProjectFile[] {
+  const appPascal = toPascalCase(spec.appName);
+  const files: ProjectFile[] = [];
+
+  const dirs = [
+    { path: `src`, name: 'src', type: 'directory' as const },
+    { path: `src/screens`, name: 'screens', type: 'directory' as const },
+    { path: `src/components`, name: 'components', type: 'directory' as const },
+    { path: `src/lib`, name: 'lib', type: 'directory' as const },
+    { path: `src/assets`, name: 'assets', type: 'directory' as const },
+    { path: `src/assets/images`, name: 'images', type: 'directory' as const },
+  ];
+
+  for (const d of dirs) {
+    files.push({
+      path: d.path,
+      name: d.name,
+      ext: '',
+      type: d.type,
+      content: '',
+      language: 'text',
+      lines: 0,
+    });
+  }
+
+  files.push({
+    path: 'package.json',
+    name: 'package.json',
+    ext: 'json',
+    type: 'config',
+    language: 'json',
+    content: JSON.stringify({
+      name: spec.appName.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+      version: '1.0.0',
+      main: 'src/App.tsx',
+      dependencies: {
+        'react': '^18.3.1',
+        'react-native': '^0.74.0',
+        '@react-navigation/native': '^6.1.0',
+        '@react-navigation/stack': '^6.3.0',
+        'expo': '^51.0.0',
+      },
+      devDependencies: { '@types/react': '^18.3.0', typescript: '^5.5.0' },
+      scripts: { start: 'expo start', build: 'expo build' },
+    }, null, 2),
+    lines: 16,
+  });
+
+  files.push({
+    path: 'app.json',
+    name: 'app.json',
+    ext: 'json',
+    type: 'config',
+    language: 'json',
+    content: JSON.stringify({
+      expo: {
+        name: spec.appName,
+        slug: spec.appName.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+        version: '1.0.0',
+        sdkVersion: '51.0.0',
+        platform: ['ios', 'android'],
+        icon: './src/assets/images/icon.png',
+        splash: { backgroundColor: spec.colorScheme.background },
+      },
+    }, null, 2),
+    lines: 10,
+  });
+
+  files.push({
+    path: 'src/theme.ts',
+    name: 'theme.ts',
+    ext: 'ts',
+    type: 'code',
+    language: 'ts',
+    content: [
+      `export const theme = {`,
+      `  primary: '${spec.colorScheme.primary}',`,
+      `  secondary: '${spec.colorScheme.secondary}',`,
+      `  accent: '${spec.colorScheme.accent}',`,
+      `  background: '${spec.colorScheme.background}',`,
+      `  surface: '${spec.colorScheme.surface}',`,
+      `  text: '${spec.colorScheme.text}',`,
+      `};`,
+      ``,
+      `export type Theme = typeof theme;`,
+    ].join('\n'),
+    lines: 10,
+  });
+
+  for (const screen of spec.screens) {
+    const code = generateScreenCode(screen, spec.colorScheme, spec.appName);
+    files.push({
+      path: `src/screens/${toPascalCase(screen.name)}.tsx`,
+      name: `${toPascalCase(screen.name)}.tsx`,
+      ext: 'tsx',
+      type: 'code',
+      language: 'tsx',
+      content: code,
+      lines: code.split('\n').length,
+    });
+  }
+
+  const navCode = [
+    `import { createStackNavigator } from '@react-navigation/stack';`,
+    ...spec.screens.map((s) => `import ${toPascalCase(s.name)} from './screens/${toPascalCase(s.name)}';`),
+    ``,
+    `const Stack = createStackNavigator();`,
+    ``,
+    `export default function AppNavigator() {`,
+    `  return (`,
+    `    <Stack.Navigator initialRouteName="${spec.screens[0]?.name ?? 'Home'}">`,
+    ...spec.screens.map((s) => `      <Stack.Screen name="${s.name}" component={${toPascalCase(s.name)}} />`),
+    `    </Stack.Navigator>`,
+    `  );`,
+    `}`,
+  ].join('\n');
+  files.push({
+    path: 'src/Navigation.tsx',
+    name: 'Navigation.tsx',
+    ext: 'tsx',
+    type: 'code',
+    language: 'tsx',
+    content: navCode,
+    lines: navCode.split('\n').length,
+  });
+
+  files.push({
+    path: 'README.md',
+    name: 'README.md',
+    ext: 'md',
+    type: 'doc',
+    language: 'md',
+    content: [
+      `# ${spec.appName}`,
+      ``,
+      `> ${spec.features.join(' · ')}`,
+      ``,
+      `## Getting started`,
+      ``,
+      `\`\`\`bash`,
+      `npm install`,
+      `npm start`,
+      `\`\`\``,
+      ``,
+      `## Screens`,
+      ``,
+      ...spec.screens.map((s) => `- **${s.name}** — ${s.description}`),
+    ].join('\n'),
+    lines: 8 + spec.screens.length,
+  });
+
+  files.push({
+    path: 'src/assets/images/icon.png',
+    name: 'icon.png',
+    ext: 'png',
+    type: 'asset',
+    language: 'image',
+    content: `placeholder-icon:${spec.colorScheme.primary}`,
+    lines: 0,
+  });
+  files.push({
+    path: 'src/assets/images/splash.png',
+    name: 'splash.png',
+    ext: 'png',
+    type: 'asset',
+    language: 'image',
+    content: `placeholder-splash:${spec.colorScheme.background}`,
+    lines: 0,
+  });
+
+  return files;
 }

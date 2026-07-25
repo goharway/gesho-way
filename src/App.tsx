@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Sparkles, Loader2, Rocket, CheckCircle2, Command as CommandIcon, Eye, Code2, Columns2 } from 'lucide-react';
+import { Sparkles, Loader2, Rocket, CheckCircle2, Command as CommandIcon, Eye, Code2, Columns2, Zap } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import {
   parsePrompt,
@@ -8,6 +8,7 @@ import {
   platformLabel,
   getDevicePreset,
   applyDarkMode,
+  generateProjectFiles,
 } from '@/lib/appEngine';
 import type {
   AppRegion,
@@ -16,6 +17,7 @@ import type {
   DeviceType,
   Platform,
   Project,
+  ProjectFile,
   StageType,
   ThemeMode,
 } from '@/types/builder';
@@ -29,9 +31,10 @@ import ThemeEditor from '@/components/ThemeEditor';
 import ProjectsDashboard from '@/components/ProjectsDashboard';
 import CommandPalette, { type Command } from '@/components/CommandPalette';
 import CodeViewer from '@/components/CodeViewer';
+import LiveGenerator from '@/components/LiveGenerator';
 
 type View = 'prompt' | 'builder' | 'dashboard';
-type InspectorMode = 'preview' | 'code' | 'split';
+type InspectorMode = 'preview' | 'code' | 'split' | 'live';
 
 const DEFAULT_COLOR_SCHEME: ColorScheme = {
   primary: '#0f766e',
@@ -57,7 +60,8 @@ export default function App() {
   const [customColors, setCustomColors] = useState<ColorScheme | null>(null);
   const [themeEditorOpen, setThemeEditorOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
-  const [inspectorMode, setInspectorMode] = useState<InspectorMode>('preview');
+  const [inspectorMode, setInspectorMode] = useState<InspectorMode>('live');
+  const [projectFiles, setProjectFiles] = useState<ProjectFile[]>([]);
 
   const device = getDevicePreset(deviceType);
 
@@ -125,6 +129,9 @@ export default function App() {
       throw new Error(regionErr?.message ?? 'Failed to create app regions');
     }
     setRegions(insertedRegions as unknown as AppRegion[]);
+
+    const files = generateProjectFiles(spec);
+    setProjectFiles(files);
 
     runBuildPipeline(projectRow.id, spec.appType);
   }, []);
@@ -201,6 +208,8 @@ export default function App() {
     setActiveLog('');
     setCustomColors(null);
     setThemeMode('light');
+    setProjectFiles([]);
+    setInspectorMode('live');
     setView('prompt');
   };
 
@@ -221,7 +230,16 @@ export default function App() {
       .select('*')
       .eq('project_id', proj.id)
       .order('sort_order', { ascending: true });
-    setRegions((regionData ?? []) as unknown as AppRegion[]);
+    const regionsData = (regionData ?? []) as unknown as AppRegion[];
+    setRegions(regionsData);
+
+    const spec = parsePrompt(proj.prompt);
+    spec.appName = proj.name;
+    spec.appType = proj.app_type;
+    spec.colorScheme = proj.config?.colorScheme ?? DEFAULT_COLOR_SCHEME;
+    spec.screens = regionsData.map((r) => r.spec);
+    setProjectFiles(generateProjectFiles(spec));
+    setInspectorMode('preview');
 
     setActiveLog('');
   };
@@ -258,6 +276,7 @@ export default function App() {
     { id: 'device-ipad', label: 'Switch to iPad', action: () => setDeviceType('ipad') },
     { id: 'mode-light', label: 'Light Mode', action: () => setThemeMode('light') },
     { id: 'mode-dark', label: 'Dark Mode', action: () => setThemeMode('dark') },
+    { id: 'mode-live', label: 'Live Generator View', action: () => setInspectorMode('live') },
   ];
 
   if (view === 'prompt') {
@@ -326,9 +345,15 @@ export default function App() {
               <InspectorModeToggle mode={inspectorMode} onChange={setInspectorMode} />
             </div>
 
-            {/* Content area: preview, code, or split */}
+            {/* Content area: preview, code, split, or live generator */}
             <div className={`flex-1 flex ${inspectorMode === 'split' ? 'flex-col xl:flex-row' : 'flex-col'} overflow-hidden`}>
-              {(inspectorMode === 'preview' || inspectorMode === 'split') && (
+              {inspectorMode === 'live' ? (
+                <div className="flex-1 bg-slate-950">
+                  <LiveGenerator files={projectFiles} isBuilding={isBuilding} />
+                </div>
+              ) : (
+                <>
+                  {(inspectorMode === 'preview' || inspectorMode === 'split') && (
                 <div className={`flex items-center justify-center overflow-auto scrollbar-thin p-4 ${inspectorMode === 'split' ? 'flex-1 xl:flex-1 max-h-[45vh] xl:max-h-none border-b xl:border-b-0 xl:border-r border-slate-800' : 'flex-1'}`}>
                   <PhonePreview
                     regions={regions}
@@ -349,6 +374,8 @@ export default function App() {
                     appName={project?.name ?? 'My App'}
                   />
                 </div>
+              )}
+                </>
               )}
             </div>
           </div>
@@ -471,6 +498,7 @@ function InspectorModeToggle({
   onChange: (m: InspectorMode) => void;
 }) {
   const tabs: { id: InspectorMode; label: string; icon: React.ReactNode }[] = [
+    { id: 'live', label: 'Live', icon: <Zap className="w-3.5 h-3.5" /> },
     { id: 'preview', label: 'Preview', icon: <Eye className="w-3.5 h-3.5" /> },
     { id: 'code', label: 'Code', icon: <Code2 className="w-3.5 h-3.5" /> },
     { id: 'split', label: 'Split', icon: <Columns2 className="w-3.5 h-3.5" /> },

@@ -18,6 +18,16 @@ export interface ColorSchemeOverride extends Partial<ColorScheme> {
   mode?: ThemeMode;
 }
 
+export interface ProjectFile {
+  path: string;
+  name: string;
+  ext: string;
+  type: 'code' | 'config' | 'asset' | 'doc' | 'directory';
+  content: string;
+  language: 'tsx' | 'ts' | 'json' | 'css' | 'md' | 'image' | 'text';
+  lines: number;
+}
+
 export type StageType =
   | 'analysis'
   | 'scaffold'
