@@ -108,6 +108,7 @@ export default function App() {
       .insert(stageRows)
       .select();
     if (stageErr || !insertedStages) {
+      await supabase.from('projects').delete().eq('id', projectRow.id);
       throw new Error(stageErr?.message ?? 'Failed to create build stages');
     }
     setStages(insertedStages as unknown as BuildStage[]);
@@ -126,6 +127,7 @@ export default function App() {
       .insert(regionRows)
       .select();
     if (regionErr || !insertedRegions) {
+      await supabase.from('projects').delete().eq('id', projectRow.id);
       throw new Error(regionErr?.message ?? 'Failed to create app regions');
     }
     setRegions(insertedRegions as unknown as AppRegion[]);
@@ -139,10 +141,28 @@ export default function App() {
   const runBuildPipeline = useCallback((projectId: string, appType: string) => {
     const stageDefs = STAGE_DEFINITIONS;
     let stageIdx = 0;
+    const abort = new AbortController();
+
+    const persistStage = async (stageType: string, status: string, logs?: string) => {
+      const update: Record<string, string> = { status };
+      if (logs !== undefined) update.logs = logs;
+      const { error } = await supabase
+        .from('build_stages')
+        .update(update)
+        .eq('project_id', projectId)
+        .eq('stage_type', stageType);
+      if (error) {
+        console.warn(`[pipeline] failed to persist stage ${stageType}:`, error.message);
+      }
+    };
 
     const runNextStage = () => {
+      if (abort.signal.aborted) return;
       if (stageIdx >= stageDefs.length) {
-        supabase.from('projects').update({ status: 'completed' }).eq('id', projectId);
+        supabase.from('projects').update({ status: 'completed' }).eq('id', projectId)
+          .then(({ error }) => {
+            if (error) console.warn('[pipeline] failed to mark project complete:', error.message);
+          });
         setActiveLog('Build complete. Your app is ready to explore.');
         return;
       }
@@ -155,13 +175,10 @@ export default function App() {
           s.stage_type === def.type ? { ...s, status: 'in_progress' } : s,
         ),
       );
-      supabase
-        .from('build_stages')
-        .update({ status: 'in_progress' })
-        .eq('project_id', projectId)
-        .eq('stage_type', def.type);
+      persistStage(def.type, 'in_progress');
 
       const streamLog = () => {
+        if (abort.signal.aborted) return;
         if (logIdx < logs.length) {
           setActiveLog(logs[logIdx]);
           logIdx++;
@@ -172,11 +189,7 @@ export default function App() {
               s.stage_type === def.type ? { ...s, status: 'completed', logs: logs.join('\n') } : s,
             ),
           );
-          supabase
-            .from('build_stages')
-            .update({ status: 'completed', logs: logs.join('\n') })
-            .eq('project_id', projectId)
-            .eq('stage_type', def.type);
+          persistStage(def.type, 'completed', logs.join('\n'));
 
           stageIdx++;
           buildTimer.current = setTimeout(runNextStage, 350);
@@ -186,6 +199,7 @@ export default function App() {
     };
 
     runNextStage();
+    return () => abort.abort();
   }, []);
 
   const handleRegionClick = (region: AppRegion) => {
@@ -193,10 +207,14 @@ export default function App() {
   };
 
   const handleCompleteRegion = async (regionId: string) => {
+    const { error } = await supabase.from('app_regions').update({ status: 'complete' }).eq('id', regionId);
+    if (error) {
+      console.warn('[region] failed to mark complete:', error.message);
+      return;
+    }
     setRegions((prev) =>
       prev.map((r) => (r.id === regionId ? { ...r, status: 'complete' } : r)),
     );
-    await supabase.from('app_regions').update({ status: 'complete' }).eq('id', regionId);
     setModalRegion(null);
   };
 

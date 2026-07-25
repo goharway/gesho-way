@@ -11,6 +11,7 @@ import {
   Trash2,
   Clock,
   ArrowRight,
+  RotateCcw,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { platformLabel } from '@/lib/appEngine';
@@ -35,31 +36,42 @@ const PLATFORM_ICONS: Record<string, React.ReactNode> = {
 export default function ProjectsDashboard({ onNew, onOpen }: ProjectsDashboardProps) {
   const [projects, setProjects] = useState<ProjectWithStats[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'all' | 'building' | 'completed'>('all');
 
   const fetchProjects = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await supabase
+    setError(null);
+    const { data, error: fetchErr } = await supabase
       .from('projects')
       .select('*')
       .order('created_at', { ascending: false });
 
-    if (error || !data) {
+    if (fetchErr || !data) {
+      setError(fetchErr?.message ?? 'Could not load projects. Please try again.');
       setLoading(false);
       return;
     }
 
     const projectRows = data as unknown as Project[];
-    const enriched = await Promise.all(
-      projectRows.map(async (p) => {
-        const [{ count: regionCount }, { count: stageCount }] = await Promise.all([
-          supabase.from('app_regions').select('*', { count: 'exact', head: true }).eq('project_id', p.id),
-          supabase.from('build_stages').select('*', { count: 'exact', head: true }).eq('project_id', p.id),
-        ]);
-        return { ...p, region_count: regionCount ?? 0, stage_count: stageCount ?? 0 };
-      }),
-    );
+    if (projectRows.length === 0) {
+      setProjects([]);
+      setLoading(false);
+      return;
+    }
+
+    const projectIds = projectRows.map((p) => p.id);
+    const [{ count: regionCount }, { count: stageCount }] = await Promise.all([
+      supabase.from('app_regions').select('*', { count: 'exact', head: true }).in('project_id', projectIds),
+      supabase.from('build_stages').select('*', { count: 'exact', head: true }).in('project_id', projectIds),
+    ]);
+
+    const enriched = projectRows.map((p) => ({
+      ...p,
+      region_count: regionCount ?? 0,
+      stage_count: stageCount ?? 0,
+    }));
 
     setProjects(enriched);
     setLoading(false);
@@ -71,7 +83,11 @@ export default function ProjectsDashboard({ onNew, onOpen }: ProjectsDashboardPr
 
   const handleDelete = async (id: string, name: string) => {
     if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
-    await supabase.from('projects').delete().eq('id', id);
+    const { error: delErr } = await supabase.from('projects').delete().eq('id', id);
+    if (delErr) {
+      setError(`Could not delete "${name}": ${delErr.message}`);
+      return;
+    }
     setProjects((prev) => prev.filter((p) => p.id !== id));
   };
 
@@ -130,6 +146,21 @@ export default function ProjectsDashboard({ onNew, onOpen }: ProjectsDashboardPr
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 className="w-6 h-6 text-slate-600 animate-spin" />
+          </div>
+        ) : error ? (
+          <div className="text-center py-20">
+            <div className="w-16 h-16 rounded-2xl bg-red-500/10 flex items-center justify-center mx-auto mb-4">
+              <AlertCircle className="w-7 h-7 text-red-400" />
+            </div>
+            <p className="text-sm text-red-400 mb-1">Something went wrong</p>
+            <p className="text-xs text-slate-500 mb-4">{error}</p>
+            <button
+              onClick={fetchProjects}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-800 text-slate-300 hover:text-slate-100 hover:bg-slate-800 text-sm transition-colors"
+            >
+              <RotateCcw className="w-4 h-4" />
+              Retry
+            </button>
           </div>
         ) : filtered.length === 0 ? (
           <div className="text-center py-20">
