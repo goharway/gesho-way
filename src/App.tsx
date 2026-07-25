@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Sparkles, Loader2, Rocket, CheckCircle2, Command as CommandIcon } from 'lucide-react';
+import { Sparkles, Loader2, Rocket, CheckCircle2, Command as CommandIcon, Eye, Code2, Columns2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import {
   parsePrompt,
@@ -28,8 +28,10 @@ import DeviceSwitcher from '@/components/DeviceSwitcher';
 import ThemeEditor from '@/components/ThemeEditor';
 import ProjectsDashboard from '@/components/ProjectsDashboard';
 import CommandPalette, { type Command } from '@/components/CommandPalette';
+import CodeViewer from '@/components/CodeViewer';
 
 type View = 'prompt' | 'builder' | 'dashboard';
+type InspectorMode = 'preview' | 'code' | 'split';
 
 const DEFAULT_COLOR_SCHEME: ColorScheme = {
   primary: '#0f766e',
@@ -55,6 +57,7 @@ export default function App() {
   const [customColors, setCustomColors] = useState<ColorScheme | null>(null);
   const [themeEditorOpen, setThemeEditorOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
+  const [inspectorMode, setInspectorMode] = useState<InspectorMode>('preview');
 
   const device = getDevicePreset(deviceType);
 
@@ -243,6 +246,8 @@ export default function App() {
   const isBuilding = stages.some((s) => s.status === 'in_progress' || s.status === 'pending');
   const buildComplete = stages.length > 0 && stages.every((s) => s.status === 'completed');
   const incompleteRegions = regions.filter((r) => r.status === 'incomplete');
+  const completeRegions = regions.filter((r) => r.status === 'complete' || r.status === 'building');
+  const activeRegion = completeRegions[0] ?? regions[0] ?? null;
 
   const commands: Command[] = [
     { id: 'new', label: 'New App', icon: <Sparkles className="w-4 h-4" />, action: handleNew },
@@ -298,33 +303,53 @@ export default function App() {
           <BuildStages stages={stages} activeLog={activeLog} />
         </div>
 
-        {/* Center: Phone preview with device + theme controls */}
-        <div className="flex-1 flex flex-col items-center justify-center bg-gradient-to-b from-slate-900 to-slate-950 p-4 min-h-[400px] relative overflow-hidden">
+        {/* Center: Preview + Code inspector (responsive: stacked on mobile, side-by-side on desktop) */}
+        <div className="flex-1 flex flex-col bg-gradient-to-b from-slate-900 to-slate-950 min-h-[400px] relative overflow-hidden">
           <div className="pointer-events-none absolute inset-0">
             <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-emerald-500/5 rounded-full blur-3xl" />
             <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-cyan-500/5 rounded-full blur-3xl" />
           </div>
 
-          <div className="relative z-10 w-full flex flex-col items-center">
-            <div className="flex items-center gap-3 mb-4">
-              <DeviceSwitcher active={deviceType} onChange={setDeviceType} />
-              <button
-                onClick={() => setThemeMode(themeMode === 'light' ? 'dark' : 'light')}
-                title="Toggle dark/light"
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-800 bg-slate-900/60 text-xs font-medium text-slate-400 hover:text-slate-200 transition-colors"
-              >
-                {themeMode === 'light' ? 'Dark' : 'Light'}
-              </button>
+          <div className="relative z-10 w-full h-full flex flex-col">
+            {/* Controls bar: device switcher + dark toggle + inspector mode */}
+            <div className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-slate-800/60 bg-slate-950/40">
+              <div className="flex items-center gap-2">
+                <DeviceSwitcher active={deviceType} onChange={setDeviceType} />
+                <button
+                  onClick={() => setThemeMode(themeMode === 'light' ? 'dark' : 'light')}
+                  title="Toggle dark/light"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-800 bg-slate-900/60 text-xs font-medium text-slate-400 hover:text-slate-200 transition-colors"
+                >
+                  {themeMode === 'light' ? 'Dark' : 'Light'}
+                </button>
+              </div>
+              <InspectorModeToggle mode={inspectorMode} onChange={setInspectorMode} />
             </div>
-            <div className="w-full flex items-center justify-center">
-              <PhonePreview
-                regions={regions}
-                colorScheme={activeColorScheme}
-                appName={project?.name ?? 'My App'}
-                device={device}
-                themeMode={themeMode}
-                onRegionClick={handleRegionClick}
-              />
+
+            {/* Content area: preview, code, or split */}
+            <div className={`flex-1 flex ${inspectorMode === 'split' ? 'flex-col xl:flex-row' : 'flex-col'} overflow-hidden`}>
+              {(inspectorMode === 'preview' || inspectorMode === 'split') && (
+                <div className={`flex items-center justify-center overflow-auto scrollbar-thin p-4 ${inspectorMode === 'split' ? 'flex-1 xl:flex-1 max-h-[45vh] xl:max-h-none border-b xl:border-b-0 xl:border-r border-slate-800' : 'flex-1'}`}>
+                  <PhonePreview
+                    regions={regions}
+                    colorScheme={activeColorScheme}
+                    appName={project?.name ?? 'My App'}
+                    device={device}
+                    themeMode={themeMode}
+                    onRegionClick={handleRegionClick}
+                  />
+                </div>
+              )}
+              {(inspectorMode === 'code' || inspectorMode === 'split') && (
+                <div className={`${inspectorMode === 'split' ? 'flex-1 min-h-[35vh] xl:min-h-0' : 'flex-1'} bg-slate-950`}
+                >
+                  <CodeViewer
+                    region={activeRegion}
+                    colorScheme={activeColorScheme}
+                    appName={project?.name ?? 'My App'}
+                  />
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -434,6 +459,36 @@ function BuildStatusPanel({
           ? 'Tap highlighted regions in the preview to complete them'
           : 'All regions complete'}
       </div>
+    </div>
+  );
+}
+
+function InspectorModeToggle({
+  mode,
+  onChange,
+}: {
+  mode: InspectorMode;
+  onChange: (m: InspectorMode) => void;
+}) {
+  const tabs: { id: InspectorMode; label: string; icon: React.ReactNode }[] = [
+    { id: 'preview', label: 'Preview', icon: <Eye className="w-3.5 h-3.5" /> },
+    { id: 'code', label: 'Code', icon: <Code2 className="w-3.5 h-3.5" /> },
+    { id: 'split', label: 'Split', icon: <Columns2 className="w-3.5 h-3.5" /> },
+  ];
+  return (
+    <div className="inline-flex items-center gap-0.5 rounded-lg border border-slate-800 bg-slate-900/60 p-0.5">
+      {tabs.map((t) => (
+        <button
+          key={t.id}
+          onClick={() => onChange(t.id)}
+          className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-all ${
+            mode === t.id ? 'bg-slate-700 text-slate-100' : 'text-slate-500 hover:text-slate-300'
+          }`}
+        >
+          {t.icon}
+          <span className="hidden sm:inline">{t.label}</span>
+        </button>
+      ))}
     </div>
   );
 }
