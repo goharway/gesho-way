@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Sparkles, Loader2, Rocket, CheckCircle2, Command as CommandIcon, Eye, Code2, Columns2, Zap } from 'lucide-react';
+import { Sparkles, Loader2, Rocket, CheckCircle2, Command as CommandIcon, Eye, Code2, Columns2, Zap, Download, LogOut } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/lib/auth';
+import { downloadProjectZip } from '@/lib/download';
 import {
   parsePrompt,
   STAGE_DEFINITIONS,
@@ -34,6 +36,7 @@ import ProjectsDashboard from '@/components/ProjectsDashboard';
 import CommandPalette, { type Command } from '@/components/CommandPalette';
 import CodeViewer from '@/components/CodeViewer';
 import LiveGenerator from '@/components/LiveGenerator';
+import AuthScreen from '@/components/AuthScreen';
 
 type View = 'prompt' | 'builder' | 'dashboard';
 type InspectorMode = 'preview' | 'code' | 'split' | 'live';
@@ -48,6 +51,7 @@ const DEFAULT_COLOR_SCHEME: ColorScheme = {
 };
 
 export default function App() {
+  const { user, loading: authLoading, signOut } = useAuth();
   const [view, setView] = useState<View>('prompt');
   const [project, setProject] = useState<Project | null>(null);
   const [stages, setStages] = useState<BuildStage[]>([]);
@@ -55,6 +59,7 @@ export default function App() {
   const [activeLog, setActiveLog] = useState('');
   const [modalRegion, setModalRegion] = useState<AppRegion | null>(null);
   const [recentProjectName, setRecentProjectName] = useState<string>();
+  const [downloading, setDownloading] = useState(false);
   const buildTimer = useRef<ReturnType<typeof setTimeout>>();
 
   const [deviceType, setDeviceType] = useState<DeviceType>('iphone');
@@ -238,6 +243,11 @@ export default function App() {
     setView('prompt');
   };
 
+  const handleSignOut = async () => {
+    if (buildTimer.current) clearTimeout(buildTimer.current);
+    await signOut();
+  };
+
   const handleOpenProject = async (proj: Project) => {
     setProject(proj);
     setCustomColors(null);
@@ -286,6 +296,18 @@ export default function App() {
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
+  const handleDownload = async () => {
+    if (!project || projectFiles.length === 0) return;
+    setDownloading(true);
+    try {
+      await downloadProjectZip(projectFiles, project.name);
+    } catch (err) {
+      console.warn('[download] failed:', err);
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   const isBuilding = stages.some((s) => s.status === 'in_progress' || s.status === 'pending');
   const buildComplete = stages.length > 0 && stages.every((s) => s.status === 'completed');
   const incompleteRegions = regions.filter((r) => r.status === 'incomplete');
@@ -304,6 +326,18 @@ export default function App() {
     { id: 'mode-live', label: 'Live Generator View', action: () => setInspectorMode('live') },
   ];
 
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-950">
+        <Loader2 className="w-6 h-6 animate-spin text-emerald-400" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <AuthScreen />;
+  }
+
   if (view === 'prompt') {
     return (
       <>
@@ -317,12 +351,16 @@ export default function App() {
     return (
       <div className="min-h-screen flex flex-col">
         <Header
+          projectName={project?.name}
+          appType={project?.app_type}
           onNew={handleNew}
           onHome={handleNew}
           onProjects={() => setView('dashboard')}
           onTheme={() => setThemeEditorOpen(true)}
           onCommand={() => setCommandOpen(true)}
+          onSignOut={handleSignOut}
         />
+
         <ProjectsDashboard onNew={handleNew} onOpen={handleOpenProject} />
         <CommandPalette open={commandOpen} commands={commands} onClose={() => setCommandOpen(false)} />
       </div>
@@ -339,6 +377,7 @@ export default function App() {
         onProjects={() => setView('dashboard')}
         onTheme={() => setThemeEditorOpen(true)}
         onCommand={() => setCommandOpen(true)}
+        onSignOut={handleSignOut}
       />
 
       <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
@@ -374,7 +413,7 @@ export default function App() {
             <div className={`flex-1 flex ${inspectorMode === 'split' ? 'flex-col xl:flex-row' : 'flex-col'} overflow-hidden`}>
               {inspectorMode === 'live' ? (
                 <div className="flex-1 bg-slate-950">
-                  <LiveGenerator files={projectFiles} isBuilding={isBuilding} />
+                  <LiveGenerator files={projectFiles} isBuilding={isBuilding} onDownload={handleDownload} canDownload={buildComplete && !downloading} downloading={downloading} />
                 </div>
               ) : (
                 <>
@@ -414,6 +453,8 @@ export default function App() {
             incompleteCount={incompleteRegions.length}
             platform={project?.platform as Platform}
             appName={project?.name ?? ''}
+            onDownload={handleDownload}
+            downloading={downloading}
           />
         </div>
       </div>
@@ -445,12 +486,16 @@ function BuildStatusPanel({
   incompleteCount,
   platform,
   appName,
+  onDownload,
+  downloading,
 }: {
   isBuilding: boolean;
   buildComplete: boolean;
   incompleteCount: number;
   platform: Platform;
   appName: string;
+  onDownload: () => void;
+  downloading: boolean;
 }) {
   return (
     <div className="space-y-4">
@@ -489,7 +534,7 @@ function BuildStatusPanel({
             <h4 className="text-sm font-semibold text-slate-200">Ready to deploy</h4>
           </div>
           <p className="text-xs text-slate-500 mb-3">
-            Your app has been built successfully. Tap incomplete regions to finish them.
+            Your app has been built successfully. Download the project files to run locally, or tap incomplete regions to finish them.
           </p>
           {incompleteCount > 0 && (
             <div className="flex items-center gap-2 text-xs text-amber-400 mb-3">
@@ -498,7 +543,19 @@ function BuildStatusPanel({
             </div>
           )}
           <button
-            className="w-full rounded-lg py-2.5 bg-gradient-to-r from-emerald-500 to-cyan-500 text-slate-900 text-sm font-semibold transition-transform hover:scale-[1.02] active:scale-95"
+            onClick={onDownload}
+            disabled={downloading}
+            className="w-full inline-flex items-center justify-center gap-2 rounded-lg py-2.5 bg-gradient-to-r from-emerald-500 to-cyan-500 text-slate-900 text-sm font-semibold transition-transform hover:scale-[1.02] active:scale-95 disabled:opacity-60 disabled:hover:scale-100 mb-2"
+          >
+            {downloading ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Download className="w-4 h-4" />
+            )}
+            Download project ZIP
+          </button>
+          <button
+            className="w-full rounded-lg py-2.5 bg-slate-800 text-slate-300 text-sm font-medium hover:bg-slate-700 transition-colors"
             disabled={incompleteCount > 0}
           >
             {incompleteCount > 0 ? 'Complete all regions first' : 'Deploy to store'}

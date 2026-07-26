@@ -900,10 +900,10 @@ export function produceLogic(spec: AppSpec): ProjectFile[] {
   ].join('\n');
 
   const apiCode = [
-    `import { supabaseUrl, supabaseAnonKey } from './config';`,
     `import { createClient } from '@supabase/supabase-js';`,
+    `import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config';`,
     ``,
-    `export const supabase = createClient(supabaseUrl, supabaseAnonKey);`,
+    `export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);`,
     ``,
     `export async function fetchAll<T>(table: string): Promise<T[]> {`,
     `  const { data, error } = await supabase.from(table).select('*');`,
@@ -912,9 +912,31 @@ export function produceLogic(spec: AppSpec): ProjectFile[] {
     `}`,
   ].join('\n');
 
+  const configCode = [
+    `export const SUPABASE_URL = '${process.env.VITE_SUPABASE_URL ?? 'https://YOUR_PROJECT.supabase.co'}';`,
+    `export const SUPABASE_ANON_KEY = '${process.env.VITE_SUPABASE_ANON_KEY ?? 'YOUR_ANON_KEY'}';`,
+  ].join('\n');
+
+  const appEntryCode = [
+    `import React from 'react';`,
+    `import { NavigationContainer } from '@react-navigation/native';`,
+    `import AppNavigator from './Navigation';`,
+    `import { theme } from './theme';`,
+    ``,
+    `export default function App() {`,
+    `  return (`,
+    `    <NavigationContainer theme={{ colors: { background: theme.background } }}>`,
+    `      <AppNavigator />`,
+    `    </NavigationContainer>`,
+    `  );`,
+    `}`,
+  ].join('\n');
+
   return [
     mkFile('src/Navigation.tsx', navCode, 'code', 'tsx'),
     mkFile('src/lib/api.ts', apiCode, 'code', 'ts'),
+    mkFile('src/lib/config.ts', configCode, 'code', 'ts'),
+    mkFile('src/App.tsx', appEntryCode, 'code', 'tsx'),
   ];
 }
 

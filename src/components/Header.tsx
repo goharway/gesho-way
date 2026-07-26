@@ -1,4 +1,4 @@
-import { Sparkles, Plus, Home, FolderKanban, Palette, Command as CommandIcon } from 'lucide-react';
+import { Sparkles, Plus, Home, FolderKanban, Palette, Command as CommandIcon, LogOut } from 'lucide-react';
 
 interface HeaderProps {
   projectName?: string;
@@ -8,9 +8,10 @@ interface HeaderProps {
   onProjects: () => void;
   onTheme: () => void;
   onCommand: () => void;
+  onSignOut: () => void;
 }
 
-export default function Header({ projectName, appType, onNew, onHome, onProjects, onTheme, onCommand }: HeaderProps) {
+export default function Header({ projectName, appType, onNew, onHome, onProjects, onTheme, onCommand, onSignOut }: HeaderProps) {
   return (
     <header className="flex items-center justify-between px-4 py-3 border-b border-slate-800 bg-slate-950/80 backdrop-blur-sm z-10">
       <div className="flex items-center gap-3">
@@ -77,6 +78,14 @@ export default function Header({ projectName, appType, onNew, onHome, onProjects
         >
           <Plus className="w-3.5 h-3.5" />
           New app
+        </button>
+
+        <button
+          onClick={onSignOut}
+          title="Sign out"
+          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-red-400 hover:bg-slate-800 transition-colors"
+        >
+          <LogOut className="w-3.5 h-3.5" />
         </button>
       </div>
     </header>

@@ -15,12 +15,16 @@ import {
   FilePlus2,
   FolderPlus,
   Sparkles,
+  Download,
 } from 'lucide-react';
 import { generateProjectFiles, type ProjectFile } from '@/lib/appEngine';
 
 interface LiveGeneratorProps {
   files: ProjectFile[];
   isBuilding: boolean;
+  onDownload?: () => void;
+  canDownload?: boolean;
+  downloading?: boolean;
 }
 
 interface FileNode {
@@ -31,7 +35,7 @@ interface FileNode {
   file?: ProjectFile;
 }
 
-export default function LiveGenerator({ files, isBuilding }: LiveGeneratorProps) {
+export default function LiveGenerator({ files, isBuilding, onDownload, canDownload, downloading }: LiveGeneratorProps) {
   const tree = buildFileTree(files);
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set(['src', 'src/screens', 'src/components']));
   const [activePath, setActivePath] = useState<string | null>(null);
@@ -141,6 +145,20 @@ export default function LiveGenerator({ files, isBuilding }: LiveGeneratorProps)
         <span className="text-[10px] text-slate-600 font-mono">
           {revealedFiles.size}/{files.filter((f) => f.type !== 'directory').length} files
         </span>
+        {onDownload && (
+          <button
+            onClick={onDownload}
+            disabled={!canDownload || downloading}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {downloading ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              <Download className="w-3 h-3" />
+            )}
+            Download ZIP
+          </button>
+        )}
       </div>
 
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
