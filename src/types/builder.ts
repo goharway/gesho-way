@@ -89,6 +89,7 @@ export interface BuildStage {
   logs: string;
   sort_order: number;
   created_at: string;
+  artifactCount?: number;
 }
 
 export interface AppRegion {

@@ -738,108 +738,152 @@ function generateScreenCode(screen: ScreenSpec, scheme: ColorScheme, appName: st
   return lines.join('\n');
 }
 
-export function generateProjectFiles(spec: AppSpec): ProjectFile[] {
-  const appPascal = toPascalCase(spec.appName);
-  const files: ProjectFile[] = [];
+const SCHEMA_TEMPLATES: Record<string, string[]> = {
+  todo: [
+    'CREATE TABLE tasks (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), title text NOT NULL, done boolean NOT NULL DEFAULT false, created_at timestamptz DEFAULT now());',
+    'CREATE TABLE categories (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), name text NOT NULL);',
+  ],
+  ecommerce: [
+    'CREATE TABLE products (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), name text NOT NULL, price numeric NOT NULL, image_url text);',
+    'CREATE TABLE cart_items (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), product_id uuid REFERENCES products(id), quantity int DEFAULT 1);',
+  ],
+  chat: [
+    'CREATE TABLE conversations (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), name text NOT NULL, last_message text);',
+    'CREATE TABLE messages (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), conversation_id uuid REFERENCES conversations(id), body text, sent_at timestamptz DEFAULT now());',
+  ],
+  fitness: [
+    'CREATE TABLE workouts (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), name text NOT NULL, duration_min int, calories int);',
+    'CREATE TABLE activities (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), steps int, date date NOT NULL);',
+  ],
+  finance: [
+    'CREATE TABLE transactions (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), amount numeric NOT NULL, category text, occurred_on date);',
+    'CREATE TABLE budgets (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), category text, limit_amount numeric);',
+  ],
+  notes: [
+    'CREATE TABLE notes (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), title text, body text, updated_at timestamptz DEFAULT now());',
+  ],
+  booking: [
+    'CREATE TABLE bookings (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), service text NOT NULL, starts_at timestamptz, status text DEFAULT \'pending\');',
+  ],
+  recipe: [
+    'CREATE TABLE recipes (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), title text NOT NULL, ingredients jsonb, steps jsonb);',
+  ],
+};
 
-  const dirs = [
-    { path: `src`, name: 'src', type: 'directory' as const },
-    { path: `src/screens`, name: 'screens', type: 'directory' as const },
-    { path: `src/components`, name: 'components', type: 'directory' as const },
-    { path: `src/lib`, name: 'lib', type: 'directory' as const },
-    { path: `src/assets`, name: 'assets', type: 'directory' as const },
-    { path: `src/assets/images`, name: 'images', type: 'directory' as const },
+function generateSchema(spec: AppSpec): string {
+  const tables = SCHEMA_TEMPLATES[spec.appType] ?? [
+    'CREATE TABLE items (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), title text NOT NULL, created_at timestamptz DEFAULT now());',
   ];
+  const header = `-- ${spec.appName} — generated schema for ${spec.appType}`;
+  return [header, '', ...tables, '', 'ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;'].join('\n');
+}
 
-  for (const d of dirs) {
-    files.push({
-      path: d.path,
-      name: d.name,
-      ext: '',
-      type: d.type,
-      content: '',
-      language: 'text',
-      lines: 0,
-    });
+function mkFile(
+  path: string,
+  content: string,
+  type: ProjectFile['type'],
+  language: ProjectFile['language'],
+): ProjectFile {
+  const name = path.split('/').pop() ?? path;
+  const ext = name.includes('.') ? name.split('.').pop() ?? '' : '';
+  return { path, name, ext, type, language, content, lines: content ? content.split('\n').length : 0 };
+}
+
+export function produceAnalysis(spec: AppSpec): ProjectFile[] {
+  const manifest = {
+    appName: spec.appName,
+    appType: spec.appType,
+    features: spec.features,
+    screensPlanned: spec.screens.map((s) => ({ name: s.name, type: s.regionType, complete: !s.intentionallyIncomplete })),
+    colorScheme: spec.colorScheme,
+  };
+  const content = JSON.stringify(manifest, null, 2);
+  return [mkFile('appforge.config.json', content, 'config', 'json')];
+}
+
+export function produceScaffold(spec: AppSpec): ProjectFile[] {
+  const files: ProjectFile[] = [];
+  for (const p of ['src', 'src/screens', 'src/components', 'src/lib', 'src/assets', 'src/assets/images', 'supabase']) {
+    files.push(mkFile(p, '', 'directory', 'text'));
   }
 
-  files.push({
-    path: 'package.json',
-    name: 'package.json',
-    ext: 'json',
-    type: 'config',
-    language: 'json',
-    content: JSON.stringify({
-      name: spec.appName.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+  const pkg = JSON.stringify({
+    name: spec.appName.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+    version: '1.0.0',
+    main: 'src/App.tsx',
+    dependencies: {
+      'react': '^18.3.1',
+      'react-native': '^0.74.0',
+      '@react-navigation/native': '^6.1.0',
+      '@react-navigation/stack': '^6.3.0',
+      'expo': '^51.0.0',
+    },
+    devDependencies: { '@types/react': '^18.3.0', typescript: '^5.5.0' },
+    scripts: { start: 'expo start', build: 'expo build' },
+  }, null, 2);
+  files.push(mkFile('package.json', pkg, 'config', 'json'));
+
+  const appJson = JSON.stringify({
+    expo: {
+      name: spec.appName,
+      slug: spec.appName.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
       version: '1.0.0',
-      main: 'src/App.tsx',
-      dependencies: {
-        'react': '^18.3.1',
-        'react-native': '^0.74.0',
-        '@react-navigation/native': '^6.1.0',
-        '@react-navigation/stack': '^6.3.0',
-        'expo': '^51.0.0',
-      },
-      devDependencies: { '@types/react': '^18.3.0', typescript: '^5.5.0' },
-      scripts: { start: 'expo start', build: 'expo build' },
-    }, null, 2),
-    lines: 16,
-  });
+      sdkVersion: '51.0.0',
+      platform: ['ios', 'android'],
+      icon: './src/assets/images/icon.png',
+      splash: { backgroundColor: spec.colorScheme.background },
+    },
+  }, null, 2);
+  files.push(mkFile('app.json', appJson, 'config', 'json'));
 
-  files.push({
-    path: 'app.json',
-    name: 'app.json',
-    ext: 'json',
-    type: 'config',
-    language: 'json',
-    content: JSON.stringify({
-      expo: {
-        name: spec.appName,
-        slug: spec.appName.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
-        version: '1.0.0',
-        sdkVersion: '51.0.0',
-        platform: ['ios', 'android'],
-        icon: './src/assets/images/icon.png',
-        splash: { backgroundColor: spec.colorScheme.background },
-      },
-    }, null, 2),
-    lines: 10,
-  });
+  const tsconfig = JSON.stringify({
+    extends: 'expo/tsconfig.base',
+    compilerOptions: { strict: true, jsx: 'react-jsx' },
+  }, null, 2);
+  files.push(mkFile('tsconfig.json', tsconfig, 'config', 'json'));
 
-  files.push({
-    path: 'src/theme.ts',
-    name: 'theme.ts',
-    ext: 'ts',
-    type: 'code',
-    language: 'ts',
-    content: [
-      `export const theme = {`,
-      `  primary: '${spec.colorScheme.primary}',`,
-      `  secondary: '${spec.colorScheme.secondary}',`,
-      `  accent: '${spec.colorScheme.accent}',`,
-      `  background: '${spec.colorScheme.background}',`,
-      `  surface: '${spec.colorScheme.surface}',`,
-      `  text: '${spec.colorScheme.text}',`,
-      `};`,
-      ``,
-      `export type Theme = typeof theme;`,
-    ].join('\n'),
-    lines: 10,
-  });
+  return files;
+}
 
-  for (const screen of spec.screens) {
+export function produceDesign(spec: AppSpec): ProjectFile[] {
+  const themeContent = [
+    `export const theme = {`,
+    `  primary: '${spec.colorScheme.primary}',`,
+    `  secondary: '${spec.colorScheme.secondary}',`,
+    `  accent: '${spec.colorScheme.accent}',`,
+    `  background: '${spec.colorScheme.background}',`,
+    `  surface: '${spec.colorScheme.surface}',`,
+    `  text: '${spec.colorScheme.text}',`,
+    `  radius: { sm: 8, md: 12, lg: 16, xl: 24 },`,
+    `  spacing: { xs: 4, sm: 8, md: 12, lg: 16, xl: 24 },`,
+    `};`,
+    ``,
+    `export type Theme = typeof theme;`,
+  ].join('\n');
+  const tokens = JSON.stringify({
+    colors: spec.colorScheme,
+    typography: { heading: 24, body: 14, caption: 12 },
+    shape: { borderRadius: 12 },
+  }, null, 2);
+  return [
+    mkFile('src/theme.ts', themeContent, 'code', 'ts'),
+    mkFile('src/design-tokens.json', tokens, 'config', 'json'),
+  ];
+}
+
+export function produceScreens(spec: AppSpec): ProjectFile[] {
+  return spec.screens.map((screen) => {
     const code = generateScreenCode(screen, spec.colorScheme, spec.appName);
-    files.push({
-      path: `src/screens/${toPascalCase(screen.name)}.tsx`,
-      name: `${toPascalCase(screen.name)}.tsx`,
-      ext: 'tsx',
-      type: 'code',
-      language: 'tsx',
-      content: code,
-      lines: code.split('\n').length,
-    });
-  }
+    return mkFile(`src/screens/${toPascalCase(screen.name)}.tsx`, code, 'code', 'tsx');
+  });
+}
 
+export function produceDatabase(spec: AppSpec): ProjectFile[] {
+  const schema = generateSchema(spec);
+  return [mkFile('supabase/schema.sql', schema, 'code', 'ts')];
+}
+
+export function produceLogic(spec: AppSpec): ProjectFile[] {
   const navCode = [
     `import { createStackNavigator } from '@react-navigation/stack';`,
     ...spec.screens.map((s) => `import ${toPascalCase(s.name)} from './screens/${toPascalCase(s.name)}';`),
@@ -854,59 +898,85 @@ export function generateProjectFiles(spec: AppSpec): ProjectFile[] {
     `  );`,
     `}`,
   ].join('\n');
-  files.push({
-    path: 'src/Navigation.tsx',
-    name: 'Navigation.tsx',
-    ext: 'tsx',
-    type: 'code',
-    language: 'tsx',
-    content: navCode,
-    lines: navCode.split('\n').length,
-  });
 
-  files.push({
-    path: 'README.md',
-    name: 'README.md',
-    ext: 'md',
-    type: 'doc',
-    language: 'md',
-    content: [
-      `# ${spec.appName}`,
-      ``,
-      `> ${spec.features.join(' · ')}`,
-      ``,
-      `## Getting started`,
-      ``,
-      `\`\`\`bash`,
-      `npm install`,
-      `npm start`,
-      `\`\`\``,
-      ``,
-      `## Screens`,
-      ``,
-      ...spec.screens.map((s) => `- **${s.name}** — ${s.description}`),
-    ].join('\n'),
-    lines: 8 + spec.screens.length,
-  });
+  const apiCode = [
+    `import { supabaseUrl, supabaseAnonKey } from './config';`,
+    `import { createClient } from '@supabase/supabase-js';`,
+    ``,
+    `export const supabase = createClient(supabaseUrl, supabaseAnonKey);`,
+    ``,
+    `export async function fetchAll<T>(table: string): Promise<T[]> {`,
+    `  const { data, error } = await supabase.from(table).select('*');`,
+    `  if (error) throw error;`,
+    `  return data as T[];`,
+    `}`,
+  ].join('\n');
 
-  files.push({
-    path: 'src/assets/images/icon.png',
-    name: 'icon.png',
-    ext: 'png',
-    type: 'asset',
-    language: 'image',
-    content: `placeholder-icon:${spec.colorScheme.primary}`,
-    lines: 0,
-  });
-  files.push({
-    path: 'src/assets/images/splash.png',
-    name: 'splash.png',
-    ext: 'png',
-    type: 'asset',
-    language: 'image',
-    content: `placeholder-splash:${spec.colorScheme.background}`,
-    lines: 0,
-  });
+  return [
+    mkFile('src/Navigation.tsx', navCode, 'code', 'tsx'),
+    mkFile('src/lib/api.ts', apiCode, 'code', 'ts'),
+  ];
+}
 
-  return files;
+export function produceTesting(spec: AppSpec): ProjectFile[] {
+  const firstScreen = spec.screens[0];
+  const comp = firstScreen ? toPascalCase(firstScreen.name) : 'Home';
+  const testCode = [
+    `import { render } from '@testing-library/react-native';`,
+    `import ${comp} from '../src/screens/${comp}';`,
+    ``,
+    `describe('${comp}', () => {`,
+    `  it('renders without crashing', () => {`,
+    `    const { toJSON } = render(<${comp} />);`,
+    `    expect(toJSON()).toBeTruthy();`,
+    `  });`,
+    `});`,
+  ].join('\n');
+  return [mkFile(`__tests__/${comp}.test.tsx`, testCode, 'code', 'tsx')];
+}
+
+export function produceDeploy(spec: AppSpec): ProjectFile[] {
+  const readme = [
+    `# ${spec.appName}`,
+    ``,
+    `> ${spec.features.join(' · ')}`,
+    ``,
+    `## Getting started`,
+    ``,
+    `\`\`\`bash`,
+    `npm install`,
+    `npm start`,
+    `\`\`\``,
+    ``,
+    `## Screens`,
+    ``,
+    ...spec.screens.map((s) => `- **${s.name}** — ${s.description}`),
+  ].join('\n');
+
+  const easJson = JSON.stringify({
+    build: { production: { env: {}, android: { buildType: 'apk' } } },
+    submit: { production: {} },
+  }, null, 2);
+
+  return [
+    mkFile('README.md', readme, 'doc', 'md'),
+    mkFile('eas.json', easJson, 'config', 'json'),
+    mkFile('src/assets/images/icon.png', `placeholder-icon:${spec.colorScheme.primary}`, 'asset', 'image'),
+    mkFile('src/assets/images/splash.png', `placeholder-splash:${spec.colorScheme.background}`, 'asset', 'image'),
+  ];
+}
+
+export const STAGE_PRODUCERS: Record<StageType, (spec: AppSpec) => ProjectFile[]> = {
+  analysis: produceAnalysis,
+  scaffold: produceScaffold,
+  design: produceDesign,
+  screens: produceScreens,
+  database: produceDatabase,
+  logic: produceLogic,
+  testing: produceTesting,
+  deploy: produceDeploy,
+};
+
+export function generateProjectFiles(spec: AppSpec): ProjectFile[] {
+  return STAGE_DEFINITIONS.flatMap((def) => STAGE_PRODUCERS[def.type](spec));
 }

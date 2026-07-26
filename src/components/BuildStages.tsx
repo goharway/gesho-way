@@ -172,9 +172,14 @@ function StageNode({ stage, index, isActive, isLast }: { stage: BuildStage; inde
               running
             </span>
           )}
+          {isCompleted && (stage.artifactCount ?? 0) > 0 && (
+            <span className="text-[9px] font-mono text-emerald-500/70 shrink-0">
+              +{stage.artifactCount}
+            </span>
+          )}
         </div>
         <div className="text-[10px] text-slate-600 mt-0.5 truncate">
-          {isCompleted ? 'Done' : isActive ? (stage.logs?.split('\n')[0] || 'Processing...') : isFailed ? 'Failed' : 'Pending'}
+          {isCompleted ? `${stage.artifactCount ?? 0} file${(stage.artifactCount ?? 0) === 1 ? '' : 's'} produced` : isActive ? (stage.logs?.split('\n')[0] || 'Processing...') : isFailed ? 'Failed' : 'Pending'}
         </div>
       </div>
 

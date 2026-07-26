@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase';
 import {
   parsePrompt,
   STAGE_DEFINITIONS,
+  STAGE_PRODUCERS,
   stageLogs,
   platformLabel,
   getDevicePreset,
@@ -12,6 +13,7 @@ import {
 } from '@/lib/appEngine';
 import type {
   AppRegion,
+  AppSpec,
   BuildStage,
   ColorScheme,
   DeviceType,
@@ -132,13 +134,11 @@ export default function App() {
     }
     setRegions(insertedRegions as unknown as AppRegion[]);
 
-    const files = generateProjectFiles(spec);
-    setProjectFiles(files);
-
-    runBuildPipeline(projectRow.id, spec.appType);
+    setProjectFiles([]);
+    runBuildPipeline(projectRow.id, spec);
   }, []);
 
-  const runBuildPipeline = useCallback((projectId: string, appType: string) => {
+  const runBuildPipeline = useCallback((projectId: string, spec: AppSpec) => {
     const stageDefs = STAGE_DEFINITIONS;
     let stageIdx = 0;
     const abort = new AbortController();
@@ -167,7 +167,8 @@ export default function App() {
         return;
       }
       const def = stageDefs[stageIdx];
-      const logs = stageLogs(def.type, appType);
+      const logs = stageLogs(def.type, spec.appType);
+      const produced = STAGE_PRODUCERS[def.type](spec);
       let logIdx = 0;
 
       setStages((prev) =>
@@ -186,10 +187,16 @@ export default function App() {
         } else {
           setStages((prev) =>
             prev.map((s) =>
-              s.stage_type === def.type ? { ...s, status: 'completed', logs: logs.join('\n') } : s,
+              s.stage_type === def.type ? { ...s, status: 'completed', logs: logs.join('\n'), artifactCount: produced.length } : s,
             ),
           );
           persistStage(def.type, 'completed', logs.join('\n'));
+
+          setProjectFiles((prev) => {
+            const existing = new Set(prev.map((f) => f.path));
+            const additions = produced.filter((f) => !existing.has(f.path));
+            return [...prev, ...additions];
+          });
 
           stageIdx++;
           buildTimer.current = setTimeout(runNextStage, 350);
