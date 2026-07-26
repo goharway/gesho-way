@@ -1,6 +1,40 @@
-import { useState } from 'react';
-import { Sparkles, Mail, Lock, Loader2, ArrowRight } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Sparkles, Mail, Lock, Loader2, ArrowRight, Check } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
+
+type StrengthLevel = {
+  score: number;
+  label: string;
+  color: string;
+  barColor: string;
+  tips: string[];
+};
+
+function evaluatePassword(password: string): StrengthLevel {
+  let score = 0;
+  const tips: string[] = [];
+  if (password.length >= 8) score += 1;
+  else tips.push('Use at least 8 characters');
+  if (password.length >= 12) score += 1;
+  if (/[A-Z]/.test(password) && /[a-z]/.test(password)) score += 1;
+  else tips.push('Mix upper and lower case');
+  if (/\d/.test(password)) score += 1;
+  else tips.push('Add a number');
+  if (/[^A-Za-z0-9]/.test(password)) score += 1;
+  else tips.push('Add a symbol');
+
+  const common = ['password', '123456', 'qwerty', 'abc123', 'letmein', 'admin', 'welcome', '111111'];
+  if (common.some((c) => password.toLowerCase().includes(c))) {
+    score = Math.min(score, 1);
+    tips.unshift('Avoid common words like "password" or "123456"');
+  }
+
+  if (score >= 4) return { score, label: 'Strong', color: 'text-emerald-400', barColor: 'bg-emerald-500', tips: [] };
+  if (score >= 3) return { score, label: 'Good', color: 'text-cyan-400', barColor: 'bg-cyan-500', tips };
+  if (score >= 2) return { score, label: 'Fair', color: 'text-amber-400', barColor: 'bg-amber-500', tips };
+  if (score.length > 0) return { score, label: 'Weak', color: 'text-red-400', barColor: 'bg-red-500', tips };
+  return { score: 0, label: '', color: 'text-slate-500', barColor: 'bg-slate-700', tips };
+}
 
 export default function AuthScreen() {
   const { signIn, signUp } = useAuth();
@@ -9,6 +43,12 @@ export default function AuthScreen() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  const strength = useMemo(() => evaluatePassword(password), [password]);
+  const canSubmit =
+    email.length > 0 &&
+    password.length > 0 &&
+    (mode === 'signin' || strength.score >= 3);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -67,6 +107,42 @@ export default function AuthScreen() {
                 className="w-full rounded-lg border border-slate-700 bg-slate-950/60 pl-9 pr-3 py-2.5 text-sm text-slate-200 placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500/40 transition"
               />
             </div>
+
+            {mode === 'signup' && password.length > 0 && (
+              <div className="mt-2 space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 flex gap-1">
+                    {[0, 1, 2, 3, 4].map((i) => (
+                      <div
+                        key={i}
+                        className={`h-1 flex-1 rounded-full transition-colors ${
+                          i < strength.score ? strength.barColor : 'bg-slate-800'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                  <span className={`text-[10px] font-medium ${strength.color} w-12 text-right`}>
+                    {strength.label}
+                  </span>
+                </div>
+                {strength.tips.length > 0 && (
+                  <ul className="space-y-0.5">
+                    {strength.tips.slice(0, 3).map((tip) => (
+                      <li key={tip} className="text-[10px] text-slate-500 flex items-center gap-1">
+                        <span className="w-1 h-1 rounded-full bg-slate-600" />
+                        {tip}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {strength.score >= 4 && (
+                  <div className="flex items-center gap-1 text-[10px] text-emerald-400">
+                    <Check className="w-3 h-3" />
+                    Looks good — use this password
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {error && (
@@ -77,8 +153,8 @@ export default function AuthScreen() {
 
           <button
             type="submit"
-            disabled={loading}
-            className="w-full inline-flex items-center justify-center gap-2 rounded-lg py-2.5 bg-gradient-to-r from-emerald-500 to-cyan-500 text-slate-900 text-sm font-semibold transition-transform hover:scale-[1.02] active:scale-95 disabled:opacity-60 disabled:hover:scale-100"
+            disabled={loading || !canSubmit}
+            className="w-full inline-flex items-center justify-center gap-2 rounded-lg py-2.5 bg-gradient-to-r from-emerald-500 to-cyan-500 text-slate-900 text-sm font-semibold transition-transform hover:scale-[1.02] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
           >
             {loading ? (
               <Loader2 className="w-4 h-4 animate-spin" />
@@ -89,6 +165,12 @@ export default function AuthScreen() {
               </>
             )}
           </button>
+
+          {mode === 'signup' && !canSubmit && password.length > 0 && (
+            <p className="text-[10px] text-slate-500 text-center">
+              Make your password reach “Good” strength to continue.
+            </p>
+          )}
         </form>
 
         <p className="text-center text-xs text-slate-500 mt-4">

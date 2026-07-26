@@ -61,5 +61,8 @@ function translateError(message: string): string {
   if (message.includes('Invalid login credentials')) return 'Email or password is incorrect.';
   if (message.includes('already registered')) return 'An account with this email already exists.';
   if (message.includes('Password should be')) return 'Password must be at least 6 characters.';
+  if (message.includes('known to be weak') || message.includes('easy to guess'))
+    return 'This password is too common or has appeared in a data breach. Use a longer, unique phrase with mixed characters.';
+  if (message.includes('weak_password')) return 'This password is too common. Use a longer, unique phrase with mixed characters.';
   return message;
 }
