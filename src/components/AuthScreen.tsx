@@ -32,7 +32,7 @@ function evaluatePassword(password: string): StrengthLevel {
   if (score >= 4) return { score, label: 'Strong', color: 'text-emerald-400', barColor: 'bg-emerald-500', tips: [] };
   if (score >= 3) return { score, label: 'Good', color: 'text-cyan-400', barColor: 'bg-cyan-500', tips };
   if (score >= 2) return { score, label: 'Fair', color: 'text-amber-400', barColor: 'bg-amber-500', tips };
-  if (score.length > 0) return { score, label: 'Weak', color: 'text-red-400', barColor: 'bg-red-500', tips };
+  if (score > 0) return { score, label: 'Weak', color: 'text-red-400', barColor: 'bg-red-500', tips };
   return { score: 0, label: '', color: 'text-slate-500', barColor: 'bg-slate-700', tips };
 }
 
