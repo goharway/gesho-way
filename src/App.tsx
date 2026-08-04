@@ -307,6 +307,20 @@ export default function App() {
     let response = 'Done.';
     let delay = 900;
 
+    const persistRegion = async (reg: AppRegion) => {
+      if (!project) return;
+      const { error } = await supabase.from('app_regions').insert({
+        project_id: project.id,
+        region_name: reg.region_name,
+        region_type: reg.region_type,
+        status: reg.status,
+        spec: reg.spec,
+        description: reg.description,
+        sort_order: reg.sort_order,
+      });
+      if (error) console.warn('[instruction] failed to persist region:', error.message);
+    };
+
     const newRegion = (name: string, desc: string, elements: ScreenElement[]): AppRegion => ({
       id: crypto.randomUUID(),
       project_id: project?.id ?? '',
@@ -318,6 +332,15 @@ export default function App() {
       sort_order: regions.length,
     });
 
+    const persistColors = async (colors: ColorScheme) => {
+      if (!project) return;
+      const { error } = await supabase
+        .from('projects')
+        .update({ config: { ...project.config, colorScheme: colors } })
+        .eq('id', project.id);
+      if (error) console.warn('[instruction] failed to persist colors:', error.message);
+    };
+
     if (/(add|create).*(screen|page|tab)/.test(lower)) {
       const screenName = (text.match(/['"]([^'"]+)['"]/) || [])[1] || 'New Screen';
       const reg = newRegion(screenName, `Added via AI instruction: ${text}`, [
@@ -326,6 +349,7 @@ export default function App() {
         { kind: 'button', label: 'Get Started' },
       ]);
       setRegions((prev) => [...prev, reg]);
+      persistRegion(reg);
       response = `Added "${screenName}" screen to your app.`;
       delay = 1200;
     } else if (/(dark|night)/.test(lower)) {
@@ -337,19 +361,27 @@ export default function App() {
       response = 'Switched to light mode.';
       delay = 500;
     } else if (/(blue|ocean)/.test(lower)) {
-      setCustomColors({ ...colorScheme, primary: '#3b82f6', secondary: '#60a5fa', accent: '#93c5fd' });
+      const colors = { ...colorScheme, primary: '#3b82f6', secondary: '#60a5fa', accent: '#93c5fd' };
+      setCustomColors(colors);
+      persistColors(colors);
       response = 'Applied a blue color scheme.';
       delay = 600;
     } else if (/(green|emerald|nature)/.test(lower)) {
-      setCustomColors({ ...colorScheme, primary: '#10b981', secondary: '#34d399', accent: '#6ee7b7' });
+      const colors = { ...colorScheme, primary: '#10b981', secondary: '#34d399', accent: '#6ee7b7' };
+      setCustomColors(colors);
+      persistColors(colors);
       response = 'Applied a green color scheme.';
       delay = 600;
     } else if (/(red|warm|sunset)/.test(lower)) {
-      setCustomColors({ ...colorScheme, primary: '#ef4444', secondary: '#f87171', accent: '#fca5a5' });
+      const colors = { ...colorScheme, primary: '#ef4444', secondary: '#f87171', accent: '#fca5a5' };
+      setCustomColors(colors);
+      persistColors(colors);
       response = 'Applied a red color scheme.';
       delay = 600;
     } else if (/(orange|amber)/.test(lower)) {
-      setCustomColors({ ...colorScheme, primary: '#f59e0b', secondary: '#fbbf24', accent: '#fcd34d' });
+      const colors = { ...colorScheme, primary: '#f59e0b', secondary: '#fbbf24', accent: '#fcd34d' };
+      setCustomColors(colors);
+      persistColors(colors);
       response = 'Applied an orange color scheme.';
       delay = 600;
     } else if (/(login|auth|sign.?in|account)/.test(lower)) {
@@ -361,6 +393,7 @@ export default function App() {
         { kind: 'text', label: 'Forgot password?' },
       ]);
       setRegions((prev) => [...prev, reg]);
+      persistRegion(reg);
       response = 'Added a login screen with email and password fields.';
       delay = 1200;
     } else if (/(notification|alert|bell)/.test(lower)) {
@@ -369,6 +402,7 @@ export default function App() {
         { kind: 'list', items: ['New message from Sarah', 'Your order shipped', 'Weekly summary ready'] },
       ]);
       setRegions((prev) => [...prev, reg]);
+      persistRegion(reg);
       response = 'Added a notifications screen.';
       delay = 1200;
     } else if (/(setting|profile|account)/.test(lower)) {
@@ -377,6 +411,7 @@ export default function App() {
         { kind: 'list', items: ['Account', 'Notifications', 'Privacy', 'Theme', 'About'] },
       ]);
       setRegions((prev) => [...prev, reg]);
+      persistRegion(reg);
       response = 'Added a settings screen.';
       delay = 1200;
     } else if (/(home|dashboard|main)/.test(lower)) {
@@ -386,6 +421,7 @@ export default function App() {
         { kind: 'button', label: 'Explore' },
       ]);
       setRegions((prev) => [...prev, reg]);
+      persistRegion(reg);
       response = 'Added a home screen.';
       delay = 1200;
     } else {
