@@ -738,44 +738,95 @@ function generateScreenCode(screen: ScreenSpec, scheme: ColorScheme, appName: st
   return lines.join('\n');
 }
 
-const SCHEMA_TEMPLATES: Record<string, string[]> = {
-  todo: [
-    'CREATE TABLE tasks (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), title text NOT NULL, done boolean NOT NULL DEFAULT false, created_at timestamptz DEFAULT now());',
-    'CREATE TABLE categories (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), name text NOT NULL);',
-  ],
-  ecommerce: [
-    'CREATE TABLE products (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), name text NOT NULL, price numeric NOT NULL, image_url text);',
-    'CREATE TABLE cart_items (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), product_id uuid REFERENCES products(id), quantity int DEFAULT 1);',
-  ],
-  chat: [
-    'CREATE TABLE conversations (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), name text NOT NULL, last_message text);',
-    'CREATE TABLE messages (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), conversation_id uuid REFERENCES conversations(id), body text, sent_at timestamptz DEFAULT now());',
-  ],
-  fitness: [
-    'CREATE TABLE workouts (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), name text NOT NULL, duration_min int, calories int);',
-    'CREATE TABLE activities (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), steps int, date date NOT NULL);',
-  ],
-  finance: [
-    'CREATE TABLE transactions (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), amount numeric NOT NULL, category text, occurred_on date);',
-    'CREATE TABLE budgets (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), category text, limit_amount numeric);',
-  ],
-  notes: [
-    'CREATE TABLE notes (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), title text, body text, updated_at timestamptz DEFAULT now());',
-  ],
-  booking: [
-    'CREATE TABLE bookings (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), service text NOT NULL, starts_at timestamptz, status text DEFAULT \'pending\');',
-  ],
-  recipe: [
-    'CREATE TABLE recipes (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), title text NOT NULL, ingredients jsonb, steps jsonb);',
-  ],
+const SCHEMA_TEMPLATES: Record<string, { tables: string[]; rlsTables: string[] }> = {
+  todo: {
+    tables: [
+      'CREATE TABLE tasks (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), title text NOT NULL, done boolean NOT NULL DEFAULT false, category_id uuid, created_at timestamptz DEFAULT now());',
+      'CREATE TABLE categories (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), name text NOT NULL);',
+    ],
+    rlsTables: ['tasks', 'categories'],
+  },
+  ecommerce: {
+    tables: [
+      'CREATE TABLE products (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), name text NOT NULL, price numeric NOT NULL, image_url text);',
+      'CREATE TABLE cart_items (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), product_id uuid REFERENCES products(id), quantity int DEFAULT 1);',
+    ],
+    rlsTables: ['products', 'cart_items'],
+  },
+  chat: {
+    tables: [
+      'CREATE TABLE conversations (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), name text NOT NULL, last_message text);',
+      'CREATE TABLE messages (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), conversation_id uuid REFERENCES conversations(id), body text, sent_at timestamptz DEFAULT now());',
+    ],
+    rlsTables: ['conversations', 'messages'],
+  },
+  fitness: {
+    tables: [
+      'CREATE TABLE workouts (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), name text NOT NULL, duration_min int, calories int);',
+      'CREATE TABLE activities (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), steps int, date date NOT NULL);',
+    ],
+    rlsTables: ['workouts', 'activities'],
+  },
+  finance: {
+    tables: [
+      'CREATE TABLE transactions (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), amount numeric NOT NULL, category text, occurred_on date);',
+      'CREATE TABLE budgets (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), category text, limit_amount numeric);',
+    ],
+    rlsTables: ['transactions', 'budgets'],
+  },
+  notes: {
+    tables: [
+      'CREATE TABLE notes (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), title text, body text, updated_at timestamptz DEFAULT now());',
+    ],
+    rlsTables: ['notes'],
+  },
+  booking: {
+    tables: [
+      "CREATE TABLE bookings (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), service text NOT NULL, starts_at timestamptz, status text DEFAULT 'pending');",
+    ],
+    rlsTables: ['bookings'],
+  },
+  recipe: {
+    tables: [
+      'CREATE TABLE recipes (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), title text NOT NULL, ingredients jsonb, steps jsonb);',
+    ],
+    rlsTables: ['recipes'],
+  },
+  social: {
+    tables: [
+      'CREATE TABLE posts (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), body text NOT NULL, author_id uuid, created_at timestamptz DEFAULT now());',
+      'CREATE TABLE profiles (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), username text NOT NULL, bio text);',
+    ],
+    rlsTables: ['posts', 'profiles'],
+  },
+  education: {
+    tables: [
+      'CREATE TABLE courses (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), title text NOT NULL, progress int DEFAULT 0);',
+      'CREATE TABLE lessons (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), course_id uuid REFERENCES courses(id), title text);',
+    ],
+    rlsTables: ['courses', 'lessons'],
+  },
+  general: {
+    tables: [
+      'CREATE TABLE items (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), title text NOT NULL, created_at timestamptz DEFAULT now());',
+    ],
+    rlsTables: ['items'],
+  },
 };
 
 function generateSchema(spec: AppSpec): string {
-  const tables = SCHEMA_TEMPLATES[spec.appType] ?? [
-    'CREATE TABLE items (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), title text NOT NULL, created_at timestamptz DEFAULT now());',
-  ];
+  const template = SCHEMA_TEMPLATES[spec.appType] ?? SCHEMA_TEMPLATES.general;
   const header = `-- ${spec.appName} — generated schema for ${spec.appType}`;
-  return [header, '', ...tables, '', 'ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;'].join('\n');
+  const rls = template.rlsTables
+    .map((t) => `ALTER TABLE ${t} ENABLE ROW LEVEL SECURITY;`)
+    .join('\n');
+  const policies = template.rlsTables
+    .flatMap((t) => [
+      `CREATE POLICY "select_own_${t}" ON ${t} FOR SELECT TO authenticated USING (auth.uid() = user_id);`,
+      `CREATE POLICY "insert_own_${t}" ON ${t} FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);`,
+    ])
+    .join('\n');
+  return [header, '', ...template.tables, '', rls, '', policies].join('\n');
 }
 
 function mkFile(
@@ -880,7 +931,7 @@ export function produceScreens(spec: AppSpec): ProjectFile[] {
 
 export function produceDatabase(spec: AppSpec): ProjectFile[] {
   const schema = generateSchema(spec);
-  return [mkFile('supabase/schema.sql', schema, 'code', 'ts')];
+  return [mkFile('supabase/schema.sql', schema, 'code', 'sql')];
 }
 
 export function produceLogic(spec: AppSpec): ProjectFile[] {

@@ -3,6 +3,7 @@ import {
   Folder,
   FolderOpen,
   FileCode2,
+  FileCog,
   FileJson,
   FileText,
   Image as ImageIcon,
@@ -342,6 +343,8 @@ function getFileIcon(file?: ProjectFile): React.ReactNode {
       return <FileText className="w-3.5 h-3.5 text-slate-400" />;
     case 'css':
       return <FileCode2 className="w-3.5 h-3.5 text-sky-400" />;
+    case 'sql':
+      return <FileCog className="w-3.5 h-3.5 text-violet-400" />;
     case 'image':
       return <ImageIcon className="w-3.5 h-3.5 text-pink-400" />;
     default:
@@ -443,6 +446,12 @@ function highlight(line: string, lang: string): string {
       .replace(/(&lt;\/?)([A-Za-z][\w.]*)/g, '$1<span style="color:#f87171">$2</span>')
       .replace(/([A-Za-z-]+)=/g, '<span style="color:#7dd3fc">$1</span>=')
       .replace(/(\{[^}]*\})/g, '<span style="color:#fbbf24">$1</span>');
+  }
+  if (lang === 'sql') {
+    return esc
+      .replace(/(--.*$)/g, '<span style="color:#475569">$1</span>')
+      .replace(/('([^']|'')*')/g, '<span style="color:#86efac">$1</span>')
+      .replace(/\b(CREATE|TABLE|ALTER|ENABLE|ROW|LEVEL|SECURITY|POLICY|SELECT|INSERT|UPDATE|DELETE|FOR|TO|USING|WITH|CHECK|PRIMARY|KEY|DEFAULT|NOT|NULL|REFERENCES|uuid|text|int|boolean|timestamptz|date|numeric|jsonb|now|gen_random_uuid|auth\.uid|authenticated|on)\b/gi, '<span style="color:#c084fc">$1</span>');
   }
   return esc;
 }

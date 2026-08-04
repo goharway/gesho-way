@@ -22,6 +22,7 @@ import type {
   Platform,
   Project,
   ProjectFile,
+  ScreenElement,
   StageType,
   ThemeMode,
 } from '@/types/builder';
@@ -37,6 +38,7 @@ import CommandPalette, { type Command } from '@/components/CommandPalette';
 import CodeViewer from '@/components/CodeViewer';
 import LiveGenerator from '@/components/LiveGenerator';
 import AuthScreen from '@/components/AuthScreen';
+import InstructionBar, { type AIInstruction } from '@/components/InstructionBar';
 
 type View = 'prompt' | 'builder' | 'dashboard';
 type InspectorMode = 'preview' | 'code' | 'split' | 'live';
@@ -69,6 +71,7 @@ export default function App() {
   const [commandOpen, setCommandOpen] = useState(false);
   const [inspectorMode, setInspectorMode] = useState<InspectorMode>('live');
   const [projectFiles, setProjectFiles] = useState<ProjectFile[]>([]);
+  const [instructions, setInstructions] = useState<AIInstruction[]>([]);
 
   const device = getDevicePreset(deviceType);
 
@@ -296,6 +299,105 @@ export default function App() {
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
+  const handleInstruction = (text: string) => {
+    const id = crypto.randomUUID();
+    setInstructions((prev) => [...prev, { id, text, status: 'processing' }]);
+
+    const lower = text.toLowerCase();
+    let response = 'Done.';
+    let delay = 900;
+
+    const newRegion = (name: string, desc: string, elements: ScreenElement[]): AppRegion => ({
+      id: crypto.randomUUID(),
+      project_id: project?.id ?? '',
+      region_name: name,
+      region_type: 'detail',
+      status: 'complete',
+      spec: { id: name.toLowerCase().replace(/\s/g, '-'), name, regionType: 'detail', description: desc, elements },
+      description: desc,
+      sort_order: regions.length,
+    });
+
+    if (/(add|create).*(screen|page|tab)/.test(lower)) {
+      const screenName = (text.match(/['"]([^'"]+)['"]/) || [])[1] || 'New Screen';
+      const reg = newRegion(screenName, `Added via AI instruction: ${text}`, [
+        { kind: 'header', label: screenName },
+        { kind: 'text', label: 'This screen was generated from your request.' },
+        { kind: 'button', label: 'Get Started' },
+      ]);
+      setRegions((prev) => [...prev, reg]);
+      response = `Added "${screenName}" screen to your app.`;
+      delay = 1200;
+    } else if (/(dark|night)/.test(lower)) {
+      setThemeMode('dark');
+      response = 'Switched to dark mode.';
+      delay = 500;
+    } else if (/(light|day)/.test(lower)) {
+      setThemeMode('light');
+      response = 'Switched to light mode.';
+      delay = 500;
+    } else if (/(blue|ocean)/.test(lower)) {
+      setCustomColors({ ...colorScheme, primary: '#3b82f6', secondary: '#60a5fa', accent: '#93c5fd' });
+      response = 'Applied a blue color scheme.';
+      delay = 600;
+    } else if (/(green|emerald|nature)/.test(lower)) {
+      setCustomColors({ ...colorScheme, primary: '#10b981', secondary: '#34d399', accent: '#6ee7b7' });
+      response = 'Applied a green color scheme.';
+      delay = 600;
+    } else if (/(red|warm|sunset)/.test(lower)) {
+      setCustomColors({ ...colorScheme, primary: '#ef4444', secondary: '#f87171', accent: '#fca5a5' });
+      response = 'Applied a red color scheme.';
+      delay = 600;
+    } else if (/(orange|amber)/.test(lower)) {
+      setCustomColors({ ...colorScheme, primary: '#f59e0b', secondary: '#fbbf24', accent: '#fcd34d' });
+      response = 'Applied an orange color scheme.';
+      delay = 600;
+    } else if (/(login|auth|sign.?in|account)/.test(lower)) {
+      const reg = newRegion('Login', 'User login screen added by AI', [
+        { kind: 'header', label: 'Welcome back' },
+        { kind: 'input', placeholder: 'Email' },
+        { kind: 'input', placeholder: 'Password' },
+        { kind: 'button', label: 'Sign In' },
+        { kind: 'text', label: 'Forgot password?' },
+      ]);
+      setRegions((prev) => [...prev, reg]);
+      response = 'Added a login screen with email and password fields.';
+      delay = 1200;
+    } else if (/(notification|alert|bell)/.test(lower)) {
+      const reg = newRegion('Notifications', 'Notifications screen added by AI', [
+        { kind: 'header', label: 'Notifications' },
+        { kind: 'list', items: ['New message from Sarah', 'Your order shipped', 'Weekly summary ready'] },
+      ]);
+      setRegions((prev) => [...prev, reg]);
+      response = 'Added a notifications screen.';
+      delay = 1200;
+    } else if (/(setting|profile|account)/.test(lower)) {
+      const reg = newRegion('Settings', 'Settings screen added by AI', [
+        { kind: 'header', label: 'Settings' },
+        { kind: 'list', items: ['Account', 'Notifications', 'Privacy', 'Theme', 'About'] },
+      ]);
+      setRegions((prev) => [...prev, reg]);
+      response = 'Added a settings screen.';
+      delay = 1200;
+    } else if (/(home|dashboard|main)/.test(lower)) {
+      const reg = newRegion('Home', 'Home screen added by AI', [
+        { kind: 'header', label: 'Home' },
+        { kind: 'card', label: 'Welcome', value: 'Lets get started' },
+        { kind: 'button', label: 'Explore' },
+      ]);
+      setRegions((prev) => [...prev, reg]);
+      response = 'Added a home screen.';
+      delay = 1200;
+    } else {
+      response = `I noted your request: "${text}". You can also try: add a screen, change to blue, add login, switch to dark.`;
+      delay = 700;
+    }
+
+    setTimeout(() => {
+      setInstructions((prev) => prev.map((i) => (i.id === id ? { ...i, status: 'done', response } : i)));
+    }, delay);
+  };
+
   const handleDownload = async () => {
     if (!project || projectFiles.length === 0) return;
     setDownloading(true);
@@ -474,6 +576,8 @@ export default function App() {
         onModeChange={setThemeMode}
         onReset={() => setCustomColors(null)}
       />
+
+      <InstructionBar onSend={handleInstruction} instructions={instructions} disabled={isBuilding} />
 
       <CommandPalette open={commandOpen} commands={commands} onClose={() => setCommandOpen(false)} />
     </div>

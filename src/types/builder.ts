@@ -24,7 +24,7 @@ export interface ProjectFile {
   ext: string;
   type: 'code' | 'config' | 'asset' | 'doc' | 'directory';
   content: string;
-  language: 'tsx' | 'ts' | 'json' | 'css' | 'md' | 'image' | 'text';
+  language: 'tsx' | 'ts' | 'json' | 'css' | 'md' | 'image' | 'text' | 'sql';
   lines: number;
 }
 
