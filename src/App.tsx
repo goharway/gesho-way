@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Sparkles, Loader2, Rocket, CheckCircle2, Command as CommandIcon, Eye, Code2, Columns2, Zap, Download, LogOut } from 'lucide-react';
+import { Sparkles, Loader2, Rocket, CheckCircle2, Command as CommandIcon, Eye, Code2, Columns2, Zap, Download, LogOut, TrendingUp, Search as SearchIcon } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth';
 import { downloadProjectZip } from '@/lib/download';
@@ -39,6 +39,7 @@ import CodeViewer from '@/components/CodeViewer';
 import LiveGenerator from '@/components/LiveGenerator';
 import AuthScreen from '@/components/AuthScreen';
 import InstructionBar, { type AIInstruction } from '@/components/InstructionBar';
+import DeployModal from '@/components/DeployModal';
 
 type View = 'prompt' | 'builder' | 'dashboard';
 type InspectorMode = 'preview' | 'code' | 'split' | 'live';
@@ -72,6 +73,7 @@ export default function App() {
   const [inspectorMode, setInspectorMode] = useState<InspectorMode>('live');
   const [projectFiles, setProjectFiles] = useState<ProjectFile[]>([]);
   const [instructions, setInstructions] = useState<AIInstruction[]>([]);
+  const [deployOpen, setDeployOpen] = useState(false);
 
   const device = getDevicePreset(deviceType);
 
@@ -282,6 +284,51 @@ export default function App() {
     setActiveLog('');
   };
 
+  // Realtime subscriptions: sync build stages and regions across tabs
+  useEffect(() => {
+    if (view !== 'builder' || !project) return;
+
+    const stageChannel = supabase
+      .channel(`stages-${project.id}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'build_stages', filter: `project_id=eq.${project.id}` },
+        (payload) => {
+          const updated = payload.new as BuildStage;
+          setStages((prev) =>
+            prev.map((s) => (s.stage_type === updated.stage_type ? { ...s, ...updated } : s)),
+          );
+        },
+      )
+      .subscribe();
+
+    const regionChannel = supabase
+      .channel(`regions-${project.id}`)
+      .on(
+        'postgres_changes',
+ { event: '*', schema: 'public', table: 'app_regions', filter: `project_id=eq.${project.id}` },
+        () => {
+          supabase
+            .from('app_regions')
+            .select('*')
+            .eq('project_id', project.id)
+            .order('sort_order', { ascending: true })
+            .then(({ data }) => {
+              if (data) {
+                const regionsData = data as unknown as AppRegion[];
+                setRegions(regionsData);
+              }
+            });
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(stageChannel);
+      supabase.removeChannel(regionChannel);
+    };
+  }, [view, project]);
+
   useEffect(() => {
     return () => {
       if (buildTimer.current) clearTimeout(buildTimer.current);
@@ -298,6 +345,16 @@ export default function App() {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, []);
+
+  const regenerateFiles = (currentRegions: AppRegion[], currentProject: Project | null) => {
+    if (!currentProject) return;
+    const spec = parsePrompt(currentProject.prompt);
+    spec.appName = currentProject.name;
+    spec.appType = currentProject.app_type;
+    spec.colorScheme = currentProject.config?.colorScheme ?? DEFAULT_COLOR_SCHEME;
+    spec.screens = currentRegions.map((r) => r.spec);
+    setProjectFiles(generateProjectFiles(spec));
+  };
 
   const handleInstruction = (text: string) => {
     const id = crypto.randomUUID();
@@ -341,15 +398,102 @@ export default function App() {
       if (error) console.warn('[instruction] failed to persist colors:', error.message);
     };
 
-    if (/(add|create).*(screen|page|tab)/.test(lower)) {
+    if (/(delete|remove).*(screen|page|tab)/.test(lower)) {
+      const screenName = (text.match(/['"]([^'"]+)['"]/) || [])[1] || '';
+      const target = regions.find((r) => r.region_name.toLowerCase() === screenName.toLowerCase());
+      if (target) {
+        supabase.from('app_regions').delete().eq('id', target.id)
+          .then(({ error }) => {
+            if (error) console.warn('[instruction] failed to delete region:', error.message);
+          });
+        const updated = regions.filter((r) => r.id !== target.id);
+        setRegions(updated);
+        regenerateFiles(updated, project);
+        response = `Deleted "${screenName}" screen.`;
+        delay = 1000;
+      } else {
+        response = `Could not find a screen named "${screenName}".`;
+        delay = 800;
+      }
+    } else if (/(rename).*(screen|page|tab)/.test(lower)) {
+      const names = text.match(/['"]([^'"]+)['"].*['"]([^'"]+)['"]/) || [];
+      const oldName = names[1] || '';
+      const newName = names[2] || '';
+      const target = regions.find((r) => r.region_name.toLowerCase() === oldName.toLowerCase());
+      if (target && newName) {
+        const updatedSpec = { ...target.spec, name: newName };
+        supabase.from('app_regions').update({ region_name: newName, spec: updatedSpec })
+          .eq('id', target.id)
+          .then(({ error }) => {
+            if (error) console.warn('[instruction] failed to rename region:', error.message);
+          });
+        const updated = regions.map((r) =>
+          r.id === target.id ? { ...r, region_name: newName, spec: updatedSpec } : r,
+        );
+        setRegions(updated);
+        regenerateFiles(updated, project);
+        response = `Renamed "${oldName}" to "${newName}".`;
+        delay = 1000;
+      } else {
+        response = 'Could not find that screen. Use: rename screen "old" to "new".';
+        delay = 800;
+      }
+    } else if (/(add|create).*chart/.test(lower)) {
+      const reg = newRegion('Analytics', 'Analytics dashboard with charts added by AI', [
+        { kind: 'header', label: 'Analytics' },
+        { kind: 'stat', label: 'Total Users', value: '2,847' },
+        { kind: 'stat', label: 'Revenue', value: '$12,450' },
+        { kind: 'card', label: 'Weekly Activity', items: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] },
+        { kind: 'stat', label: 'Growth', value: '+18%' },
+      ]);
+      const updated = [...regions, reg];
+      setRegions(updated);
+      persistRegion(reg);
+      regenerateFiles(updated, project);
+      response = 'Added an analytics screen with charts and stats.';
+      delay = 1200;
+    } else if (/(add|create).*search/.test(lower)) {
+      const existing = regions.find((r) => r.region_name.toLowerCase() === 'search');
+      if (!existing) {
+        const reg = newRegion('Search', 'Search screen added by AI', [
+          { kind: 'header', label: 'Search' },
+          { kind: 'input', placeholder: 'Search...' },
+          { kind: 'list', items: ['Recent searches', 'Trending now', 'Categories'] },
+        ]);
+        const updated = [...regions, reg];
+        setRegions(updated);
+        persistRegion(reg);
+        regenerateFiles(updated, project);
+        response = 'Added a search screen.';
+        delay = 1200;
+      } else {
+        response = 'A search screen already exists.';
+        delay = 600;
+      }
+    } else if (/(add|create).*profile/.test(lower)) {
+      const reg = newRegion('Profile', 'User profile screen added by AI', [
+        { kind: 'header', label: 'Profile' },
+        { kind: 'avatar', label: 'John Doe' },
+        { kind: 'stat', label: 'Member since', value: 'Jan 2024' },
+        { kind: 'list', items: ['Edit Profile', 'My Posts', 'Settings', 'Logout'] },
+      ]);
+      const updated = [...regions, reg];
+      setRegions(updated);
+      persistRegion(reg);
+      regenerateFiles(updated, project);
+      response = 'Added a profile screen.';
+      delay = 1200;
+    } else if (/(add|create).*(screen|page|tab)/.test(lower)) {
       const screenName = (text.match(/['"]([^'"]+)['"]/) || [])[1] || 'New Screen';
       const reg = newRegion(screenName, `Added via AI instruction: ${text}`, [
         { kind: 'header', label: screenName },
         { kind: 'text', label: 'This screen was generated from your request.' },
         { kind: 'button', label: 'Get Started' },
       ]);
-      setRegions((prev) => [...prev, reg]);
+      const updated = [...regions, reg];
+      setRegions(updated);
       persistRegion(reg);
+      regenerateFiles(updated, project);
       response = `Added "${screenName}" screen to your app.`;
       delay = 1200;
     } else if (/(dark|night)/.test(lower)) {
@@ -392,8 +536,10 @@ export default function App() {
         { kind: 'button', label: 'Sign In' },
         { kind: 'text', label: 'Forgot password?' },
       ]);
-      setRegions((prev) => [...prev, reg]);
+      const updated = [...regions, reg];
+      setRegions(updated);
       persistRegion(reg);
+      regenerateFiles(updated, project);
       response = 'Added a login screen with email and password fields.';
       delay = 1200;
     } else if (/(notification|alert|bell)/.test(lower)) {
@@ -401,8 +547,10 @@ export default function App() {
         { kind: 'header', label: 'Notifications' },
         { kind: 'list', items: ['New message from Sarah', 'Your order shipped', 'Weekly summary ready'] },
       ]);
-      setRegions((prev) => [...prev, reg]);
+      const updated = [...regions, reg];
+      setRegions(updated);
       persistRegion(reg);
+      regenerateFiles(updated, project);
       response = 'Added a notifications screen.';
       delay = 1200;
     } else if (/(setting|profile|account)/.test(lower)) {
@@ -410,8 +558,10 @@ export default function App() {
         { kind: 'header', label: 'Settings' },
         { kind: 'list', items: ['Account', 'Notifications', 'Privacy', 'Theme', 'About'] },
       ]);
-      setRegions((prev) => [...prev, reg]);
+      const updated = [...regions, reg];
+      setRegions(updated);
       persistRegion(reg);
+      regenerateFiles(updated, project);
       response = 'Added a settings screen.';
       delay = 1200;
     } else if (/(home|dashboard|main)/.test(lower)) {
@@ -420,12 +570,14 @@ export default function App() {
         { kind: 'card', label: 'Welcome', value: 'Lets get started' },
         { kind: 'button', label: 'Explore' },
       ]);
-      setRegions((prev) => [...prev, reg]);
+      const updated = [...regions, reg];
+      setRegions(updated);
       persistRegion(reg);
+      regenerateFiles(updated, project);
       response = 'Added a home screen.';
       delay = 1200;
     } else {
-      response = `I noted your request: "${text}". You can also try: add a screen, change to blue, add login, switch to dark.`;
+      response = `I noted your request: "${text}". Try: add a screen, delete screen "name", add a chart, add search, rename screen "old" to "new", change to blue, switch to dark.`;
       delay = 700;
     }
 

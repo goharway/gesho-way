@@ -12,6 +12,9 @@ import {
   Clock,
   ArrowRight,
   RotateCcw,
+  Pencil,
+  X,
+  Check,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { platformLabel } from '@/lib/appEngine';
@@ -39,6 +42,9 @@ export default function ProjectsDashboard({ onNew, onOpen }: ProjectsDashboardPr
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'all' | 'building' | 'completed'>('all');
+  const [renaming, setRenaming] = useState<ProjectWithStats | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [savingRename, setSavingRename] = useState(false);
 
   const fetchProjects = useCallback(async () => {
     setLoading(true);
@@ -89,6 +95,35 @@ export default function ProjectsDashboard({ onNew, onOpen }: ProjectsDashboardPr
       return;
     }
     setProjects((prev) => prev.filter((p) => p.id !== id));
+  };
+
+  const startRename = (project: ProjectWithStats) => {
+    setRenaming(project);
+    setRenameValue(project.name);
+  };
+
+  const cancelRename = () => {
+    setRenaming(null);
+    setRenameValue('');
+    setSavingRename(false);
+  };
+
+  const confirmRename = async () => {
+    if (!renaming || !renameValue.trim()) return;
+    setSavingRename(true);
+    const { error: renameErr } = await supabase
+      .from('projects')
+      .update({ name: renameValue.trim() })
+      .eq('id', renaming.id);
+    setSavingRename(false);
+    if (renameErr) {
+      setError(`Could not rename project: ${renameErr.message}`);
+      return;
+    }
+    setProjects((prev) =>
+      prev.map((p) => (p.id === renaming.id ? { ...p, name: renameValue.trim() } : p)),
+    );
+    cancelRename();
   };
 
   const filtered = projects.filter((p) => {
@@ -164,20 +199,26 @@ export default function ProjectsDashboard({ onNew, onOpen }: ProjectsDashboardPr
           </div>
         ) : filtered.length === 0 ? (
           <div className="text-center py-20">
-            <div className="w-16 h-16 rounded-2xl bg-slate-800/50 flex items-center justify-center mx-auto mb-4">
-              <Plus className="w-7 h-7 text-slate-600" />
+            <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-emerald-500/10 to-cyan-500/10 flex items-center justify-center mx-auto mb-5 ring-1 ring-slate-800">
+              <Plus className="w-9 h-9 text-emerald-400/60" />
             </div>
-            <p className="text-sm text-slate-400 mb-1">
+            <h3 className="text-base font-semibold text-slate-300 mb-1">
               {search || filter !== 'all' ? 'No projects match your filters' : 'No projects yet'}
+            </h3>
+            <p className="text-sm text-slate-500 mb-5">
+              {search || filter !== 'all'
+                ? 'Try adjusting your search or filter.'
+                : 'Create your first app to get started — it only takes a minute.'}
             </p>
-            <p className="text-xs text-slate-600 mb-4">Create your first app to get started</p>
-            <button
-              onClick={onNew}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-800 text-slate-300 hover:text-slate-100 hover:bg-slate-800 text-sm transition-colors"
-            >
-              <Plus className="w-4 h-4" />
-              Start building
-            </button>
+            {!search && filter === 'all' && (
+              <button
+                onClick={onNew}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 text-slate-900 font-semibold text-sm transition-all hover:shadow-lg hover:shadow-emerald-500/25 hover:scale-[1.02] active:scale-95"
+              >
+                <Plus className="w-4 h-4" />
+                Create your first app
+              </button>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -187,11 +228,64 @@ export default function ProjectsDashboard({ onNew, onOpen }: ProjectsDashboardPr
                 project={p}
                 onOpen={() => onOpen(p)}
                 onDelete={() => handleDelete(p.id, p.name)}
+                onRename={() => startRename(p)}
               />
             ))}
           </div>
         )}
       </div>
+
+      {/* Rename modal */}
+      {renaming && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in-up"
+          onClick={cancelRename}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl border border-slate-800 bg-slate-900 shadow-2xl p-5 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-lg bg-slate-800 flex items-center justify-center">
+                <Pencil className="w-4 h-4 text-slate-300" />
+              </div>
+              <h3 className="text-sm font-bold text-slate-100">Rename project</h3>
+            </div>
+            <input
+              type="text"
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') confirmRename();
+                if (e.key === 'Escape') cancelRename();
+              }}
+              autoFocus
+              className="w-full rounded-xl bg-slate-950 border border-slate-800 px-4 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-emerald-500/40 focus:ring-2 focus:ring-emerald-500/20"
+              placeholder="Project name"
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={cancelRename}
+                className="flex-1 rounded-lg py-2.5 bg-slate-800 text-slate-300 text-xs font-medium hover:bg-slate-700 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmRename}
+                disabled={!renameValue.trim() || savingRename}
+                className="flex-1 rounded-lg py-2.5 bg-gradient-to-r from-emerald-500 to-cyan-500 text-slate-900 text-xs font-semibold transition-colors disabled:opacity-50 inline-flex items-center justify-center gap-1.5"
+              >
+                {savingRename ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Check className="w-3.5 h-3.5" />
+                )}
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -200,15 +294,20 @@ function ProjectCard({
   project,
   onOpen,
   onDelete,
+  onRename,
 }: {
   project: ProjectWithStats;
   onOpen: () => void;
   onDelete: () => void;
+  onRename: () => void;
 }) {
   const timeAgo = getTimeAgo(project.created_at);
 
   return (
-    <div className="group relative rounded-2xl border border-slate-800 bg-slate-900/40 p-5 hover:border-slate-700 transition-all cursor-pointer" onClick={onOpen}>
+    <div
+      className="group relative rounded-2xl border border-slate-800 bg-slate-900/40 p-5 hover:border-slate-700 transition-all cursor-pointer"
+      onClick={onOpen}
+    >
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-2">
           <div className="w-9 h-9 rounded-lg bg-slate-800 flex items-center justify-center text-slate-400">
@@ -237,6 +336,19 @@ function ProjectCard({
         <ArrowRight className="w-4 h-4 text-slate-600 group-hover:text-emerald-400 transition-colors" />
       </div>
 
+      {/* Action buttons — rename + delete */}
+      <div className="absolute top-3 right-10 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onRename();
+          }}
+          className="p-1.5 rounded-lg text-slate-600 hover:text-cyan-400 hover:bg-cyan-500/10 transition-all"
+          title="Rename project"
+        >
+          <Pencil className="w-3.5 h-3.5" />
+        </button>
+      </div>
       <button
         onClick={(e) => {
           e.stopPropagation();

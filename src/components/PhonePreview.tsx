@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import {
   ChevronLeft,
   Search,
@@ -19,6 +19,8 @@ import {
   Check,
   Sun,
   Moon,
+  X,
+  GripVertical,
 } from 'lucide-react';
 import type { AppRegion, ColorScheme, DevicePreset, ScreenSpec, ScreenElement, ThemeMode } from '@/types/builder';
 
@@ -29,11 +31,26 @@ interface PhonePreviewProps {
   device: DevicePreset;
   themeMode: ThemeMode;
   onRegionClick: (region: AppRegion) => void;
+  onReorder?: (reordered: AppRegion[]) => void;
+  onDeleteScreen?: (regionId: string) => void;
 }
 
-export default function PhonePreview({ regions, colorScheme, appName, device, themeMode, onRegionClick }: PhonePreviewProps) {
+export default function PhonePreview({
+  regions,
+  colorScheme,
+  appName,
+  device,
+  themeMode,
+  onRegionClick,
+  onReorder,
+  onDeleteScreen,
+}: PhonePreviewProps) {
   const completeRegions = regions.filter((r) => r.status === 'complete' || r.status === 'building');
   const [activeIdx, setActiveIdx] = useState(0);
+  const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const dragCounter = useRef(0);
 
   useEffect(() => {
     if (activeIdx > 0 && activeIdx >= completeRegions.length) {
@@ -57,22 +74,93 @@ export default function PhonePreview({ regions, colorScheme, appName, device, th
   const safeIdx = Math.min(activeIdx, completeRegions.length - 1);
   const region = completeRegions[safeIdx];
 
+  const handleDragStart = (e: React.DragEvent, idx: number) => {
+    if (!onReorder) return;
+    setDraggedIdx(idx);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e: React.DragEvent, idx: number) => {
+    if (!onReorder || draggedIdx === null) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (dragOverIdx !== idx) setDragOverIdx(idx);
+  };
+
+  const handleDrop = (e: React.DragEvent, idx: number) => {
+    if (!onReorder || draggedIdx === null) return;
+    e.preventDefault();
+    if (draggedIdx === idx) {
+      setDraggedIdx(null);
+      setDragOverIdx(null);
+      return;
+    }
+    const reordered = [...completeRegions];
+    const [moved] = reordered.splice(draggedIdx, 1);
+    reordered.splice(idx, 0, moved);
+    onReorder(reordered);
+    setDraggedIdx(null);
+    setDragOverIdx(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedIdx(null);
+    setDragOverIdx(null);
+    dragCounter.current = 0;
+  };
+
+  const handleDeleteClick = (e: React.MouseEvent, regionId: string) => {
+    e.stopPropagation();
+    setConfirmDelete(regionId);
+  };
+
+  const confirmDeleteScreen = () => {
+    if (confirmDelete && onDeleteScreen) {
+      onDeleteScreen(confirmDelete);
+    }
+    setConfirmDelete(null);
+  };
+
   return (
     <div className="flex flex-col items-center h-full p-4 overflow-hidden">
-      <div className="flex items-center gap-1.5 mb-3 flex-wrap justify-center max-w-[300px]">
-        {completeRegions.map((r, i) => (
-          <button
-            key={r.id}
-            onClick={() => setActiveIdx(i)}
-            className={`text-xs px-2.5 py-1 rounded-full transition-colors ${
-              i === safeIdx
-                ? 'bg-slate-700 text-slate-100'
-                : 'text-slate-500 hover:text-slate-300'
-            }`}
-          >
-            {r.region_name}
-          </button>
-        ))}
+      {/* Screen tabs — draggable + deletable */}
+      <div className="flex items-center gap-1.5 mb-3 flex-wrap justify-center max-w-[320px]">
+        {completeRegions.map((r, i) => {
+          const isDragged = draggedIdx === i;
+          const isDragOver = dragOverIdx === i && draggedIdx !== i;
+          return (
+            <div
+              key={r.id}
+              draggable={!!onReorder}
+              onDragStart={(e) => handleDragStart(e, i)}
+              onDragOver={(e) => handleDragOver(e, i)}
+              onDrop={(e) => handleDrop(e, i)}
+              onDragEnd={handleDragEnd}
+              onClick={() => setActiveIdx(i)}
+              className={`group relative flex items-center gap-1 text-xs px-2.5 py-1 rounded-full transition-all cursor-pointer select-none ${
+                i === safeIdx
+                  ? 'bg-slate-700 text-slate-100'
+                  : 'text-slate-500 hover:text-slate-300'
+              } ${isDragged ? 'opacity-40 scale-95' : ''} ${isDragOver ? 'ring-2 ring-emerald-400/50' : ''} ${
+                onReorder ? 'hover:ring-1 hover:ring-slate-600' : ''
+              }`}
+            >
+              {onReorder && (
+                <GripVertical className="w-2.5 h-2.5 text-slate-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+              )}
+              <span className="truncate max-w-[80px]">{r.region_name}</span>
+              {onDeleteScreen && (
+                <button
+                  onClick={(e) => handleDeleteClick(e, r.id)}
+                  className="opacity-0 group-hover:opacity-100 p-0.5 rounded-full hover:bg-red-500/20 text-slate-500 hover:text-red-400 transition-all"
+                  title="Delete screen"
+                >
+                  <X className="w-2.5 h-2.5" />
+                </button>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       <PhoneFrame device={device}>
@@ -89,6 +177,47 @@ export default function PhonePreview({ regions, colorScheme, appName, device, th
       <p className="text-xs text-slate-500 mt-3 text-center max-w-[240px] truncate">
         {region.description}
       </p>
+
+      {onReorder && completeRegions.length > 1 && (
+        <p className="text-[10px] text-slate-600 mt-1">Drag tabs to reorder screens</p>
+      )}
+
+      {/* Delete confirmation modal */}
+      {confirmDelete && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in-up"
+          onClick={() => setConfirmDelete(null)}
+        >
+          <div
+            className="w-full max-w-xs rounded-2xl border border-slate-800 bg-slate-900 shadow-2xl p-5 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-lg bg-red-500/10 flex items-center justify-center">
+                <AlertCircle className="w-4.5 h-4.5 text-red-400" />
+              </div>
+              <h3 className="text-sm font-bold text-slate-100">Delete screen?</h3>
+            </div>
+            <p className="text-xs text-slate-400">
+              This will permanently remove the screen from your app. This cannot be undone.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setConfirmDelete(null)}
+                className="flex-1 rounded-lg py-2.5 bg-slate-800 text-slate-300 text-xs font-medium hover:bg-slate-700 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDeleteScreen}
+                className="flex-1 rounded-lg py-2.5 bg-red-500/90 text-white text-xs font-semibold hover:bg-red-500 transition-colors"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
