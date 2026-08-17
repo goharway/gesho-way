@@ -7,7 +7,7 @@ import {
   Copy,
   Check,
   ExternalLink,
-  CloudUpload,
+  Upload,
   Package,
   ShieldCheck,
   Globe,
@@ -23,7 +23,7 @@ interface DeployModalProps {
 
 const DEPLOY_STEPS = [
   { label: 'Bundling production assets', icon: Package },
-  { label: 'Uploading to build server', icon: CloudUpload },
+  { label: 'Uploading to build server', icon: Upload },
   { label: 'Running security checks', icon: ShieldCheck },
   { label: 'Generating preview link', icon: Globe },
 ];

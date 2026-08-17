@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Sparkles, Loader2, Rocket, CheckCircle2, Command as CommandIcon, Eye, Code2, Columns2, Zap, Download, LogOut, TrendingUp, Search as SearchIcon } from 'lucide-react';
+import { Sparkles, Loader2, Rocket, CheckCircle2, Command as CommandIcon, Eye, Code2, Columns2, Zap, Download, LogOut } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth';
 import { downloadProjectZip } from '@/lib/download';
@@ -382,11 +382,12 @@ export default function App() {
       id: crypto.randomUUID(),
       project_id: project?.id ?? '',
       region_name: name,
-      region_type: 'detail',
+      region_type: 'screen',
       status: 'complete',
-      spec: { id: name.toLowerCase().replace(/\s/g, '-'), name, regionType: 'detail', description: desc, elements },
+      spec: { name, regionType: 'screen', description: desc, elements },
       description: desc,
       sort_order: regions.length,
+      created_at: new Date().toISOString(),
     });
 
     const persistColors = async (colors: ColorScheme) => {
@@ -598,6 +599,34 @@ export default function App() {
     }
   };
 
+  const handleReorderScreens = (reordered: AppRegion[]) => {
+    setRegions((prev) => {
+      const completeIds = new Set(reordered.map((r) => r.id));
+      const incomplete = prev.filter((r) => !completeIds.has(r.id));
+      return [...reordered, ...incomplete];
+    });
+    if (project) {
+      reordered.forEach((r, i) => {
+        supabase.from('app_regions').update({ sort_order: i }).eq('id', r.id)
+          .then(({ error }) => {
+            if (error) console.warn('[reorder] failed:', error.message);
+          });
+      });
+      regenerateFiles([...reordered, ...regions.filter((r) => !reordered.find((rr) => rr.id === r.id))], project);
+    }
+  };
+
+  const handleDeleteScreen = (regionId: string) => {
+    if (!project) return;
+    supabase.from('app_regions').delete().eq('id', regionId)
+      .then(({ error }) => {
+        if (error) console.warn('[delete-screen] failed:', error.message);
+      });
+    const updated = regions.filter((r) => r.id !== regionId);
+    setRegions(updated);
+    regenerateFiles(updated, project);
+  };
+
   const isBuilding = stages.some((s) => s.status === 'in_progress' || s.status === 'pending');
   const buildComplete = stages.length > 0 && stages.every((s) => s.status === 'completed');
   const incompleteRegions = regions.filter((r) => r.status === 'incomplete');
@@ -716,6 +745,8 @@ export default function App() {
                     device={device}
                     themeMode={themeMode}
                     onRegionClick={handleRegionClick}
+                    onReorder={handleReorderScreens}
+                    onDeleteScreen={handleDeleteScreen}
                   />
                 </div>
               )}
@@ -745,6 +776,7 @@ export default function App() {
             appName={project?.name ?? ''}
             onDownload={handleDownload}
             downloading={downloading}
+            onDeploy={() => setDeployOpen(true)}
           />
         </div>
       </div>
@@ -768,6 +800,14 @@ export default function App() {
       <InstructionBar onSend={handleInstruction} instructions={instructions} disabled={isBuilding} />
 
       <CommandPalette open={commandOpen} commands={commands} onClose={() => setCommandOpen(false)} />
+
+      <DeployModal
+        open={deployOpen}
+        onClose={() => setDeployOpen(false)}
+        appName={project?.name ?? 'My App'}
+        projectId={project?.id ?? ''}
+        platform={project?.platform ?? 'both'}
+      />
     </div>
   );
 }
@@ -780,6 +820,7 @@ function BuildStatusPanel({
   appName,
   onDownload,
   downloading,
+  onDeploy,
 }: {
   isBuilding: boolean;
   buildComplete: boolean;
@@ -788,6 +829,7 @@ function BuildStatusPanel({
   appName: string;
   onDownload: () => void;
   downloading: boolean;
+  onDeploy: () => void;
 }) {
   return (
     <div className="space-y-4">
@@ -847,6 +889,7 @@ function BuildStatusPanel({
             Download project ZIP
           </button>
           <button
+            onClick={onDeploy}
             className="w-full rounded-lg py-2.5 bg-slate-800 text-slate-300 text-sm font-medium hover:bg-slate-700 transition-colors"
             disabled={incompleteCount > 0}
           >

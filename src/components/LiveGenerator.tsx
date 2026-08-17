@@ -7,7 +7,6 @@ import {
   FileJson,
   FileText,
   Image as ImageIcon,
-  FileCog,
   ChevronRight,
   ChevronDown,
   CheckCircle2,
