@@ -13,7 +13,6 @@ import {
   ArrowRight,
   RotateCcw,
   Pencil,
-  X,
   Check,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';

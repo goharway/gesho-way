@@ -7,17 +7,9 @@ import type {
   ProjectFile,
   ScreenSpec,
   StageType,
-  ThemeMode,
 } from '@/types/builder';
 
 export type { ProjectFile };
-
-interface ParsedPrompt {
-  appName: string;
-  appType: string;
-  features: string[];
-  keyword: string;
-}
 
 const KEYWORDS: Record<string, string> = {
   todo: 'todo',
@@ -652,7 +644,7 @@ function toPascalCase(s: string): string {
   return s.replace(/[^a-zA-Z0-9]+(.)/g, (_, c) => c.toUpperCase()).replace(/^./, (c) => c.toUpperCase()) || 'App';
 }
 
-function generateScreenCode(screen: ScreenSpec, scheme: ColorScheme, appName: string): string {
+function generateScreenCode(screen: ScreenSpec, scheme: ColorScheme): string {
   const comp = toPascalCase(screen.name);
   const q = (s?: string) => JSON.stringify(s ?? '');
   const lines: string[] = [
@@ -924,7 +916,7 @@ export function produceDesign(spec: AppSpec): ProjectFile[] {
 
 export function produceScreens(spec: AppSpec): ProjectFile[] {
   return spec.screens.map((screen) => {
-    const code = generateScreenCode(screen, spec.colorScheme, spec.appName);
+    const code = generateScreenCode(screen, spec.colorScheme);
     return mkFile(`src/screens/${toPascalCase(screen.name)}.tsx`, code, 'code', 'tsx');
   });
 }

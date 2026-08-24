@@ -1,4 +1,3 @@
-import { useEffect, useRef, useState } from 'react';
 import {
   Search,
   Brain,
@@ -98,7 +97,7 @@ export default function BuildStages({ stages, activeLog }: BuildStagesProps) {
                 stage={stage}
                 index={idx}
                 isActive={stage.status === 'in_progress'}
-                isLast={idx === stages.length - 1}
+
               />
             ))}
           </div>
@@ -125,7 +124,7 @@ export default function BuildStages({ stages, activeLog }: BuildStagesProps) {
   );
 }
 
-function StageNode({ stage, index, isActive, isLast }: { stage: BuildStage; index: number; isActive: boolean; isLast: boolean }) {
+function StageNode({ stage, index, isActive }: { stage: BuildStage; index: number; isActive: boolean }) {
   const icon = STAGE_ICONS[stage.stage_type as StageType] ?? <Search className="w-4 h-4" />;
   const isCompleted = stage.status === 'completed';
   const isPending = stage.status === 'pending';

@@ -132,7 +132,6 @@ export default function DeployModal({ open, onClose, appName, projectId, platfor
               {DEPLOY_STEPS.map((step, i) => {
                 const isComplete = i < currentStep;
                 const isActive = i === currentStep;
-                const isPending = i > currentStep;
                 return (
                   <div
                     key={step.label}

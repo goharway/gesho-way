@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, Palette, Sun, Moon, RotateCcw, Check } from 'lucide-react';
+import { X, Palette, Sun, Moon, RotateCcw } from 'lucide-react';
 import type { ColorScheme, ThemeMode } from '@/types/builder';
 
 interface ThemeEditorProps {

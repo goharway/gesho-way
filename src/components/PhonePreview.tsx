@@ -4,19 +4,11 @@ import {
   Search,
   Plus,
   Bell,
-  Heart,
-  MessageCircle,
-  Share,
   Home,
   User,
-  Grid,
-  Settings as SettingsIcon,
   AlertCircle,
   Lock,
-  Play,
   Image as ImageIcon,
-  TrendingUp,
-  Check,
   Sun,
   Moon,
   X,
@@ -27,7 +19,6 @@ import type { AppRegion, ColorScheme, DevicePreset, ScreenSpec, ScreenElement, T
 interface PhonePreviewProps {
   regions: AppRegion[];
   colorScheme: ColorScheme;
-  appName: string;
   device: DevicePreset;
   themeMode: ThemeMode;
   onRegionClick: (region: AppRegion) => void;
@@ -38,7 +29,6 @@ interface PhonePreviewProps {
 export default function PhonePreview({
   regions,
   colorScheme,
-  appName,
   device,
   themeMode,
   onRegionClick,
@@ -167,7 +157,6 @@ export default function PhonePreview({
         <ScreenRenderer
           spec={region.spec}
           colorScheme={colorScheme}
-          appName={appName}
           themeMode={themeMode}
           isIncomplete={region.status === 'building'}
           onIncompleteClick={() => onRegionClick(region)}
@@ -244,14 +233,12 @@ function PhoneFrame({ device, children }: { device: DevicePreset; children: Reac
 function ScreenRenderer({
   spec,
   colorScheme,
-  appName,
   themeMode,
   isIncomplete,
   onIncompleteClick,
 }: {
   spec: ScreenSpec;
   colorScheme: ColorScheme;
-  appName: string;
   themeMode: ThemeMode;
   isIncomplete: boolean;
   onIncompleteClick: () => void;
@@ -269,7 +256,6 @@ function ScreenRenderer({
             key={idx}
             element={el}
             colorScheme={colorScheme}
-            appName={appName}
           />
         ))}
         {isIncomplete && (
@@ -313,11 +299,9 @@ function ScreenHeader({ label, colorScheme }: { label: string; colorScheme: Colo
 function ElementRenderer({
   element,
   colorScheme,
-  appName,
 }: {
   element: ScreenElement;
   colorScheme: ColorScheme;
-  appName: string;
 }) {
   switch (element.kind) {
     case 'header':

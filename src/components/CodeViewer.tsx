@@ -281,9 +281,6 @@ function SpecRow({
   label,
   value,
   depth,
-  expanded,
-  toggle,
-  nodeKey,
 }: {
   label: string;
   value: string;

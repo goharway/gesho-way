@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Sparkles, Loader2, Rocket, CheckCircle2, Command as CommandIcon, Eye, Code2, Columns2, Zap, Download, LogOut } from 'lucide-react';
+import { Sparkles, Loader2, Rocket, CheckCircle2, Command as CommandIcon, Eye, Code2, Columns2, Zap, Download } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth';
 import { downloadProjectZip } from '@/lib/download';
@@ -23,7 +23,6 @@ import type {
   Project,
   ProjectFile,
   ScreenElement,
-  StageType,
   ThemeMode,
 } from '@/types/builder';
 import PromptScreen from '@/components/PromptScreen';
@@ -741,7 +740,6 @@ export default function App() {
                   <PhonePreview
                     regions={regions}
                     colorScheme={activeColorScheme}
-                    appName={project?.name ?? 'My App'}
                     device={device}
                     themeMode={themeMode}
                     onRegionClick={handleRegionClick}

@@ -13,11 +13,10 @@ import {
   Loader2,
   Terminal,
   FilePlus2,
-  FolderPlus,
   Sparkles,
   Download,
 } from 'lucide-react';
-import { generateProjectFiles, type ProjectFile } from '@/lib/appEngine';
+import { type ProjectFile } from '@/lib/appEngine';
 
 interface LiveGeneratorProps {
   files: ProjectFile[];
