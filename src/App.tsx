@@ -26,7 +26,6 @@ import type {
   ThemeMode,
 } from '@/types/builder';
 import PromptScreen from '@/components/PromptScreen';
-import BuildStages from '@/components/BuildStages';
 import PhonePreview from '@/components/PhonePreview';
 import RegionModal from '@/components/RegionModal';
 import Header from '@/components/Header';
@@ -686,7 +685,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="workspace-shell min-h-screen flex flex-col bg-white text-slate-900">
       <Header
         projectName={project?.name}
         appType={project?.app_type}
@@ -698,114 +697,93 @@ export default function App() {
         onSignOut={handleSignOut}
       />
 
-      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
-        {/* Left: Build stages */}
-        <div className="w-full lg:w-80 xl:w-96 border-b lg:border-b-0 lg:border-r border-slate-800 bg-slate-950/50 flex flex-col max-h-[50vh] lg:max-h-none">
-          <BuildStages stages={stages} activeLog={activeLog} />
-        </div>
-
-        {/* Center: Preview + Code inspector (responsive: stacked on mobile, side-by-side on desktop) */}
-        <div className="flex-1 flex flex-col bg-gradient-to-b from-slate-900 to-slate-950 min-h-[400px] relative overflow-hidden">
-          <div className="pointer-events-none absolute inset-0">
-            <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-emerald-500/5 rounded-full blur-3xl" />
-            <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-cyan-500/5 rounded-full blur-3xl" />
+      <main className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden">
+        <aside className="workspace-sidebar workspace-chat-panel w-full lg:w-[300px] xl:w-[328px] flex flex-col border-b lg:border-b-0 lg:border-r border-slate-200">
+          <div className="workspace-sidebar-head flex items-center justify-between px-4 py-3 border-b border-slate-200">
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Build workspace</p>
+              <h2 className="mt-1 text-sm font-semibold text-slate-800">{project?.name ?? 'New mobile app'}</h2>
+            </div>
+            <span className={`workspace-status-dot ${isBuilding ? 'is-building' : buildComplete ? 'is-ready' : ''}`} />
           </div>
 
-          <div className="relative z-10 w-full h-full flex flex-col">
-            {/* Controls bar: device switcher + dark toggle + inspector mode */}
-            <div className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-slate-800/60 bg-slate-950/40">
-              <div className="flex items-center gap-2">
-                <DeviceSwitcher active={deviceType} onChange={setDeviceType} />
-                <button
-                  onClick={() => setThemeMode(themeMode === 'light' ? 'dark' : 'light')}
-                  title="Toggle dark/light"
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-800 bg-slate-900/60 text-xs font-medium text-slate-400 hover:text-slate-200 transition-colors"
-                >
-                  {themeMode === 'light' ? 'Dark' : 'Light'}
-                </button>
+          <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin px-4 py-4 space-y-4">
+            <div className="workspace-message workspace-message-ai">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="workspace-avatar">A</span>
+                <span className="text-xs font-semibold text-slate-700">AppForge AI</span>
+                <span className="ml-auto text-[10px] text-slate-400">now</span>
               </div>
-              <InspectorModeToggle mode={inspectorMode} onChange={setInspectorMode} />
+              <p className="text-xs leading-5 text-slate-600">Your workspace is ready. Describe a change and I’ll update the screens, styling, and app flow.</p>
             </div>
 
-            {/* Content area: preview, code, split, or live generator */}
-            <div className={`flex-1 flex ${inspectorMode === 'split' ? 'flex-col xl:flex-row' : 'flex-col'} overflow-hidden`}>
-              {inspectorMode === 'live' ? (
-                <div className="flex-1 bg-slate-950">
-                  <LiveGenerator files={projectFiles} isBuilding={isBuilding} onDownload={handleDownload} canDownload={buildComplete && !downloading} downloading={downloading} />
-                </div>
-              ) : (
-                <>
-                  {(inspectorMode === 'preview' || inspectorMode === 'split') && (
-                <div className={`flex items-center justify-center overflow-auto scrollbar-thin p-4 ${inspectorMode === 'split' ? 'flex-1 xl:flex-1 max-h-[45vh] xl:max-h-none border-b xl:border-b-0 xl:border-r border-slate-800' : 'flex-1'}`}>
-                  <PhonePreview
-                    regions={regions}
-                    colorScheme={activeColorScheme}
-                    device={device}
-                    themeMode={themeMode}
-                    onRegionClick={handleRegionClick}
-                    onReorder={handleReorderScreens}
-                    onDeleteScreen={handleDeleteScreen}
-                  />
-                </div>
-              )}
-              {(inspectorMode === 'code' || inspectorMode === 'split') && (
-                <div className={`${inspectorMode === 'split' ? 'flex-1 min-h-[35vh] xl:min-h-0' : 'flex-1'} bg-slate-950`}
-                >
-                  <CodeViewer
-                    region={activeRegion}
-                    colorScheme={activeColorScheme}
-                    appName={project?.name ?? 'My App'}
-                  />
-                </div>
-              )}
-                </>
-              )}
+            <div className="workspace-file-card rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-[11px] font-semibold text-slate-700">Build activity</span>
+                <span className="text-[10px] text-slate-400">{stages.filter((stage) => stage.status === 'completed').length}/{stages.length}</span>
+              </div>
+              <div className="space-y-2">
+                {stages.slice(0, 5).map((stage) => (
+                  <div key={stage.id} className="flex items-center gap-2 text-[11px]">
+                    <span className={`h-1.5 w-1.5 rounded-full ${stage.status === 'completed' ? 'bg-emerald-500' : stage.status === 'in_progress' ? 'bg-blue-500 animate-pulse' : 'bg-slate-300'}`} />
+                    <span className={`${stage.status === 'pending' ? 'text-slate-400' : 'text-slate-600'} truncate`}>{stage.stage_name}</span>
+                    {stage.status === 'completed' && <CheckCircle2 className="ml-auto h-3 w-3 text-emerald-500" />}
+                  </div>
+                ))}
+              </div>
+              {activeLog && <p className="mt-3 border-t border-slate-200 pt-3 text-[10px] leading-4 text-slate-500">{activeLog}</p>}
             </div>
+
+            {instructions.length === 0 && !isBuilding && (
+              <div className="workspace-suggestions">
+                <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Try asking</p>
+                <div className="flex flex-wrap gap-2">
+                  {['Add a profile screen', 'Make it dark', 'Add a login flow'].map((suggestion) => (
+                    <span key={suggestion} className="rounded-full border border-slate-200 bg-white px-2.5 py-1.5 text-[10px] text-slate-500">{suggestion}</span>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
-        </div>
 
-        {/* Right: Status panel */}
-        <div className="w-full lg:w-72 border-t lg:border-t-0 lg:border-l border-slate-800 bg-slate-950/50 p-4 max-h-[40vh] lg:max-h-none overflow-y-auto scrollbar-thin">
-          <BuildStatusPanel
-            isBuilding={isBuilding}
-            buildComplete={buildComplete}
-            incompleteCount={incompleteRegions.length}
-            platform={project?.platform as Platform}
-            appName={project?.name ?? ''}
-            onDownload={handleDownload}
-            downloading={downloading}
-            onDeploy={() => setDeployOpen(true)}
-          />
-        </div>
-      </div>
+          <InstructionBar onSend={handleInstruction} instructions={instructions} disabled={isBuilding} />
+        </aside>
 
-      <RegionModal
-        region={modalRegion}
-        onClose={() => setModalRegion(null)}
-        onComplete={handleCompleteRegion}
-      />
+        <section className="workspace-canvas flex-1 min-h-[540px] min-w-0 flex flex-col overflow-hidden bg-[#f8fafc]">
+          <div className="workspace-toolbar flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-2.5">
+            <div className="flex items-center gap-2">
+              <span className="workspace-pill"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Preview</span>
+              <DeviceSwitcher active={deviceType} onChange={setDeviceType} />
+              <button onClick={() => setThemeMode(themeMode === 'light' ? 'dark' : 'light')} className="workspace-tool-button">{themeMode === 'light' ? 'Light' : 'Dark'}</button>
+            </div>
+            <InspectorModeToggle mode={inspectorMode} onChange={setInspectorMode} />
+          </div>
 
-      <ThemeEditor
-        open={themeEditorOpen}
-        colorScheme={colorScheme}
-        themeMode={themeMode}
-        onClose={() => setThemeEditorOpen(false)}
-        onChange={setCustomColors}
-        onModeChange={setThemeMode}
-        onReset={() => setCustomColors(null)}
-      />
+          <div className="flex-1 min-h-0 overflow-hidden">
+            {inspectorMode === 'live' ? (
+              <LiveGenerator files={projectFiles} isBuilding={isBuilding} onDownload={handleDownload} canDownload={buildComplete && !downloading} downloading={downloading} />
+            ) : (
+              <div className={`h-full flex ${inspectorMode === 'split' ? 'flex-col xl:flex-row' : 'flex-col'}`}>
+                {(inspectorMode === 'preview' || inspectorMode === 'split') && <div className={`flex-1 flex items-center justify-center overflow-auto p-6 ${inspectorMode === 'split' ? 'border-b xl:border-b-0 xl:border-r border-slate-200' : ''}`}><PhonePreview regions={regions} colorScheme={activeColorScheme} device={device} themeMode={themeMode} onRegionClick={handleRegionClick} onReorder={handleReorderScreens} onDeleteScreen={handleDeleteScreen} /></div>}
+                {(inspectorMode === 'code' || inspectorMode === 'split') && <div className="flex-1 min-h-0 bg-slate-950"><CodeViewer region={activeRegion} colorScheme={activeColorScheme} appName={project?.name ?? 'My App'} /></div>}
+              </div>
+            )}
+          </div>
+        </section>
 
-      <InstructionBar onSend={handleInstruction} instructions={instructions} disabled={isBuilding} />
+        <aside className="workspace-right-panel w-full lg:w-[240px] xl:w-[260px] border-t lg:border-t-0 lg:border-l border-slate-200 bg-white p-4 overflow-y-auto scrollbar-thin">
+          <div className="mb-5 flex items-center justify-between">
+            <div><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Test & share</p><h2 className="mt-1 text-sm font-semibold text-slate-800">Your app</h2></div>
+            <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] text-slate-500">{project?.platform ?? 'both'}</span>
+          </div>
+          <BuildStatusPanel isBuilding={isBuilding} buildComplete={buildComplete} incompleteCount={incompleteRegions.length} platform={project?.platform as Platform} appName={project?.name ?? ''} onDownload={handleDownload} downloading={downloading} onDeploy={() => setDeployOpen(true)} />
+        </aside>
+      </main>
 
+      <RegionModal region={modalRegion} onClose={() => setModalRegion(null)} onComplete={handleCompleteRegion} />
+      <ThemeEditor open={themeEditorOpen} colorScheme={colorScheme} themeMode={themeMode} onClose={() => setThemeEditorOpen(false)} onChange={setCustomColors} onModeChange={setThemeMode} onReset={() => setCustomColors(null)} />
       <CommandPalette open={commandOpen} commands={commands} onClose={() => setCommandOpen(false)} />
-
-      <DeployModal
-        open={deployOpen}
-        onClose={() => setDeployOpen(false)}
-        appName={project?.name ?? 'My App'}
-        projectId={project?.id ?? ''}
-        platform={project?.platform ?? 'both'}
-      />
+      <DeployModal open={deployOpen} onClose={() => setDeployOpen(false)} appName={project?.name ?? 'My App'} projectId={project?.id ?? ''} platform={project?.platform ?? 'both'} />
     </div>
   );
 }
@@ -830,77 +808,42 @@ function BuildStatusPanel({
   onDeploy: () => void;
 }) {
   return (
-    <div className="space-y-4">
-      <div>
-        <h3 className="text-xs uppercase tracking-wider text-slate-500 mb-2">Status</h3>
-        {isBuilding ? (
-          <div className="flex items-center gap-2 text-sm text-cyan-400">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            Building...
-          </div>
-        ) : buildComplete ? (
-          <div className="flex items-center gap-2 text-sm text-emerald-400">
-            <CheckCircle2 className="w-4 h-4" />
-            Build complete
-          </div>
-        ) : (
-          <div className="text-sm text-slate-500">Idle</div>
-        )}
+    <div className="space-y-5">
+      <div className="workspace-qr-card rounded-xl border border-slate-200 bg-slate-50 p-3">
+        <p className="text-xs font-semibold text-slate-700">Try it on your phone</p>
+        <div className="qr-placeholder my-3 mx-auto h-32 w-32 rounded-lg border border-slate-200 bg-white" aria-label="QR preview" />
+        <p className="text-[10px] leading-4 text-slate-400">Scan this QR code to preview the current app on your mobile device.</p>
       </div>
 
-      <div className="rounded-xl bg-slate-900 border border-slate-800 p-3 space-y-2">
-        <div className="flex justify-between text-xs">
-          <span className="text-slate-500">App name</span>
-          <span className="text-slate-300 font-medium">{appName}</span>
+      <div>
+        <div className="mb-2 flex items-center justify-between">
+          <h3 className="text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-400">Runtime Scanner</h3>
+          <span className={`h-2 w-2 rounded-full ${isBuilding ? 'bg-blue-500 animate-pulse' : buildComplete ? 'bg-emerald-500' : 'bg-slate-300'}`} />
         </div>
-        <div className="flex justify-between text-xs">
-          <span className="text-slate-500">Platform</span>
-          <span className="text-slate-300 font-medium">{platformLabel(platform)}</span>
+        <div className="rounded-xl border border-slate-200 bg-white p-3">
+          {isBuilding ? (
+            <div className="flex items-center gap-2 text-xs text-blue-600"><Loader2 className="h-3.5 w-3.5 animate-spin" />Scanning build output…</div>
+          ) : buildComplete ? (
+            <div className="flex items-center gap-2 text-xs text-emerald-600"><CheckCircle2 className="h-3.5 w-3.5" />App is ready to test</div>
+          ) : (
+            <div className="text-xs text-slate-400">Waiting for the first build</div>
+          )}
         </div>
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-2">
+        <div className="flex justify-between text-xs"><span className="text-slate-400">App name</span><span className="max-w-[120px] truncate font-medium text-slate-700">{appName}</span></div>
+        <div className="flex justify-between text-xs"><span className="text-slate-400">Platform</span><span className="font-medium text-slate-700">{platformLabel(platform)}</span></div>
       </div>
 
       {buildComplete && (
-        <div className="rounded-xl border border-slate-800 bg-slate-900 p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <Rocket className="w-4 h-4 text-emerald-400" />
-            <h4 className="text-sm font-semibold text-slate-200">Ready to deploy</h4>
-          </div>
-          <p className="text-xs text-slate-500 mb-3">
-            Your app has been built successfully. Download the project files to run locally, or tap incomplete regions to finish them.
-          </p>
-          {incompleteCount > 0 && (
-            <div className="flex items-center gap-2 text-xs text-amber-400 mb-3">
-              <Sparkles className="w-3.5 h-3.5" />
-              {incompleteCount} region{incompleteCount > 1 ? 's' : ''} need completion
-            </div>
-          )}
-          <button
-            onClick={onDownload}
-            disabled={downloading}
-            className="w-full inline-flex items-center justify-center gap-2 rounded-lg py-2.5 bg-gradient-to-r from-emerald-500 to-cyan-500 text-slate-900 text-sm font-semibold transition-transform hover:scale-[1.02] active:scale-95 disabled:opacity-60 disabled:hover:scale-100 mb-2"
-          >
-            {downloading ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Download className="w-4 h-4" />
-            )}
-            Download project ZIP
-          </button>
-          <button
-            onClick={onDeploy}
-            className="w-full rounded-lg py-2.5 bg-slate-800 text-slate-300 text-sm font-medium hover:bg-slate-700 transition-colors"
-            disabled={incompleteCount > 0}
-          >
-            {incompleteCount > 0 ? 'Complete all regions first' : 'Deploy to store'}
-          </button>
+        <div className="rounded-xl border border-slate-200 bg-white p-3">
+          <div className="mb-2 flex items-center gap-2"><Rocket className="h-4 w-4 text-[#615cf6]" /><h4 className="text-sm font-semibold text-slate-800">Ready to share</h4></div>
+          {incompleteCount > 0 && <div className="mb-3 flex items-center gap-2 text-xs text-amber-600"><Sparkles className="h-3.5 w-3.5" />{incompleteCount} region{incompleteCount > 1 ? 's' : ''} need completion</div>}
+          <button onClick={onDownload} disabled={downloading} className="mb-2 w-full rounded-lg bg-[#615cf6] py-2.5 text-xs font-semibold text-white transition hover:bg-[#514ce5] disabled:opacity-60">{downloading ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : <><Download className="mr-1.5 inline h-3.5 w-3.5" />Download project</>}</button>
+          <button onClick={onDeploy} disabled={incompleteCount > 0} className="w-full rounded-lg border border-slate-200 py-2.5 text-xs font-medium text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">{incompleteCount > 0 ? 'Complete regions first' : 'Deploy to store'}</button>
         </div>
       )}
-
-      <div className="text-xs text-slate-600 text-center pt-2">
-        {incompleteCount > 0
-          ? 'Tap highlighted regions in the preview to complete them'
-          : 'All regions complete'}
-      </div>
     </div>
   );
 }
@@ -919,13 +862,13 @@ function InspectorModeToggle({
     { id: 'split', label: 'Split', icon: <Columns2 className="w-3.5 h-3.5" /> },
   ];
   return (
-    <div className="inline-flex items-center gap-0.5 rounded-lg border border-slate-800 bg-slate-900/60 p-0.5">
+    <div className="inline-flex items-center gap-0.5 rounded-lg border border-slate-200 bg-white p-0.5">
       {tabs.map((t) => (
         <button
           key={t.id}
           onClick={() => onChange(t.id)}
           className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-all ${
-            mode === t.id ? 'bg-slate-700 text-slate-100' : 'text-slate-500 hover:text-slate-300'
+            mode === t.id ? 'bg-slate-100 text-slate-800' : 'text-slate-400 hover:text-slate-600'
           }`}
         >
           {t.icon}

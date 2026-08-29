@@ -15,7 +15,7 @@ const ICONS: Record<DeviceType, React.ReactNode> = {
 
 export default function DeviceSwitcher({ active, onChange }: DeviceSwitcherProps) {
   return (
-    <div className="inline-flex items-center gap-0.5 rounded-lg border border-slate-800 bg-slate-900/60 p-0.5">
+    <div className="inline-flex items-center gap-0.5 rounded-lg border border-slate-200 bg-white p-0.5">
       {DEVICE_PRESETS.map((d) => (
         <button
           key={d.type}
@@ -23,8 +23,8 @@ export default function DeviceSwitcher({ active, onChange }: DeviceSwitcherProps
           title={d.label}
           className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-all ${
             active === d.type
-              ? 'bg-slate-700 text-slate-100'
-              : 'text-slate-500 hover:text-slate-300'
+              ? 'bg-slate-100 text-slate-800'
+              : 'text-slate-400 hover:text-slate-600'
           }`}
         >
           {ICONS[d.type]}
